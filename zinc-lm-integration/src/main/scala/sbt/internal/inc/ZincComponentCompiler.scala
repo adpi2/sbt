@@ -43,6 +43,7 @@ private[sbt] object ZincComponentCompiler {
       case sc if (sc startsWith "2.11.") => "compiler-bridge_2.11"
       case sc if (sc startsWith "2.12.") => "compiler-bridge_2.12"
       case "2.13.0-M1"                   => "compiler-bridge_2.12"
+      case sc if (sc startsWith "3.0.")  => "scala3-compiler-bridge_3.0.0-M1"
       case _                             => "compiler-bridge_2.13"
     }
     ModuleID(SbtOrganization, compilerBridgeId, incrementalVersion)
@@ -78,7 +79,8 @@ private[sbt] object ZincComponentCompiler {
 
     override def fetchCompiledBridge(scalaInstance: ScalaInstance, logger: Logger): File = {
       val scalaVersion = scalaInstance.actualVersion()
-      val bridgeSources = userProvidedBridgeSources.getOrElse(getDefaultBridgeModule(scalaVersion))
+      val bridgeModule = getDefaultBridgeModule(scalaVersion)
+      val bridgeSources = userProvidedBridgeSources.getOrElse(bridgeModule)
       compiledBridge(bridgeSources, scalaInstance, logger)
     }
 
