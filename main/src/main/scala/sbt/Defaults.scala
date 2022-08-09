@@ -89,7 +89,7 @@ import sbt.util._
 import sjsonnew._
 import sjsonnew.support.scalajson.unsafe.Converter
 import xsbti.compile.TastyFiles
-import xsbti.{ FileConverter, Position }
+import xsbti.{ FileConverter, Position, Problem, Reporter }
 
 import scala.annotation.nowarn
 import scala.collection.immutable.ListMap
@@ -2440,11 +2440,27 @@ object Defaults extends BuildCommon {
         )
       },
       compilerReporter := {
-        new ManagedLoggedReporter(
+        val logger = streams.value.log
+        val managedReporter = new ManagedLoggedReporter(
           maxErrors.value,
           streams.value.log,
           foldMappers(sourcePositionMappers.value, reportAbsolutePath.value, fileConverter.value)
         )
+        new Reporter {
+          override def reset(): Unit = managedReporter.reset()
+          override def hasErrors: Boolean = managedReporter.hasErrors
+          override def hasWarnings: Boolean = managedReporter.hasWarnings
+          override def printSummary(): Unit = managedReporter.printSummary()
+          override def problems(): Array[Problem] = managedReporter.problems()
+          override def log(problem: Problem): Unit = {
+            logger.info(
+              s"Received problem with code ${problem.diagnosticCode.asScala.map(_.code())}"
+            )
+            managedReporter.log(problem)
+          }
+          override def comment(pos: Position, msg: String): Unit = managedReporter.comment(pos, msg)
+        }
+
       },
       compileInputs := {
         val options = compileOptions.value
