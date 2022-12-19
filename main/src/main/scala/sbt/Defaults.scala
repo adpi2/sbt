@@ -2827,8 +2827,44 @@ object Classpaths {
 
   val jvmPublishSettings: Seq[Setting[_]] = Seq(
     artifacts := artifactDefs(defaultArtifactTasks).value,
-    packagedArtifacts := packaged(defaultArtifactTasks).value
+    packagedArtifacts := {
+      if (sbtPlugin.value) packagedSbtPluginArtifacts.value
+      else packaged(defaultArtifactTasks).value
+    }
   ) ++ RemoteCache.projectSettings
+
+  private def packagedSbtPluginArtifacts: Def.Initialize[Task[Map[Artifact, File]]] = Def.task {
+    val crossVersion = sbtCrossVersion.value
+    val publishPom = (makePom / publishArtifact).value
+    val (deprecatedArtifact, deprecatedPom) = (makePom / packagedArtifact).value
+    val pom = makeSbtPluginPom.value
+    val deprecatedPackages = packaged(defaultPackages).value
+
+    def addCross(a: Artifact): Artifact = a.withName(crossVersion(a.name))
+    val packages = deprecatedPackages.map { case (artifact, file) => addCross(artifact) -> file }
+    val bothPoms = if (publishPom) {
+      Map(deprecatedArtifact -> deprecatedPom, addCross(deprecatedArtifact) -> pom)
+    } else Map.empty
+    packages ++ deprecatedPackages ++ bothPoms
+  }
+
+  private def sbtCrossVersion: Def.Initialize[String => String] = Def.setting {
+    val sbtV = sbtBinaryVersion.value
+    val scalaV = scalaBinaryVersion.value
+    name => name + s"_${scalaV}_$sbtV"
+  }
+
+  private def makeSbtPluginPom: Def.Initialize[Task[File]] = Def.task {
+    val config = makePomConfiguration.value
+    val nameWithCross = sbtCrossVersion.value(artifact.value.name)
+    val version = Keys.version.value
+    val pomFile = config.file.get.getParentFile / s"$nameWithCross-$version.pom"
+    val publisher = Keys.publisher.value
+    val ivySbt = Keys.ivySbt.value
+    val module = new ivySbt.Module(moduleSettings.value, appendSbtCrossVersion = true)
+    publisher.makePomFile(module, config.withFile(pomFile), streams.value.log)
+    pomFile
+  }
 
   val ivyPublishSettings: Seq[Setting[_]] = publishGlobalDefaults ++ Seq(
     artifacts :== Nil,

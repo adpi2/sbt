@@ -1,0 +1,6 @@
+> example / checkPublishedArtifacts
+> example / checkPublish
+
+> testProject / checkUpdate
+> set testProject / useCoursier := false
+> testProject / checkUpdate
