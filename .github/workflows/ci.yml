@@ -70,12 +70,28 @@ jobs:
         repository: sbt/io
         ref: develop
         path: io
-    - name: Checkout sbt/librarymanagement
+    - name: Checkout adpi2/librarymanagement
       uses: actions/checkout@v3
       with:
-        repository: sbt/librarymanagement
-        ref: develop
+        repository: adpi2/librarymanagement
+        ref: sbt-plugins-maven-path
         path: librarymanagement
+    - name: Checkout adpi2/coursier
+      uses: actions/checkout@v3
+      with:
+        repository: adpi2/coursier
+        ref: sbt-plugins-maven-path
+        path: coursier
+        fetch-depth: 0
+        submodules: true
+    - name: Checkout adpi2/sbt-coursier
+      uses: actions/checkout@v3
+      with:
+        repository: adpi2/sbt-coursier
+        ref: sbt-plugins-maven-path
+        path: sbt-coursier
+        fetch-depth: 0
+        submodules: true
     - name: Checkout sbt/zinc
       uses: actions/checkout@v3
       with:
@@ -101,6 +117,25 @@ jobs:
     - name: Setup Windows C++ toolchain
       uses: ilammy/msvc-dev-cmd@v1
       if: ${{ matrix.os == 'windows-latest' }}
+    - name: Build librarymanagement
+      shell: bash
+      run: |
+        cd librarymanagement
+        ../sbt publishLocal
+    - name: Build coursier
+      shell: bash
+      run: |
+        cd coursier
+        ./mill 'util.jvm[2.12.17].publishLocal'
+        ./mill 'core.jvm[2.12.17].publishLocal'
+        ./mill 'cache.jvm[2.12.17].publishLocal'
+        ./mill 'coursier.jvm[2.12.17].publishLocal'
+        ./mill 'proxy-setup.publishLocal'
+    - name: Build sbt-coursier
+      shell: bash
+      run: |
+        cd sbt-coursier
+        ../sbt lm-coursier-shaded/publishLocal
     - name: Build and test (1)
       if: ${{ matrix.jobtype == 1 }}
       shell: bash
