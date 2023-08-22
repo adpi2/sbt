@@ -154,8 +154,10 @@ trait Init[ScopeType] {
   private[this] final val nextID = new java.util.concurrent.atomic.AtomicLong
   private[this] final def nextDefaultID(): Long = nextID.incrementAndGet()
 
-  def empty(implicit delegates: ScopeType => Seq[ScopeType]): Settings[ScopeType] =
-    new Settings0(Map.empty, delegates)
+  def settings(
+      data: Map[ScopeType, AttributeMap]
+  )(implicit delegates: ScopeType => Seq[ScopeType]): Settings[ScopeType] =
+    new Settings0(data, delegates)
 
   def asTransform(s: Settings[ScopeType]): ScopedKey ~> Id = λ[ScopedKey ~> Id](k => getValue(s, k))
 

@@ -54,12 +54,12 @@ abstract class EvaluateSettings[ScopeType] {
       strictConstant(allScopes.asInstanceOf[A1$]) // can't convince scalac that StaticScopes => T == Set[Scope]
   }
 
-  private[this] lazy val roots: Seq[INode[_]] = compiledSettings flatMap { cs =>
-    (cs.settings map { s =>
+  private[this] lazy val roots: Seq[INode[_]] = compiledSettings.flatMap { cs =>
+    cs.settings.iterator.map[INode[_]] { s =>
       val t = transform(s.init)
       static(s.key) = t
       t
-    }): Seq[INode[_]]
+    }
   }
 
   private[this] val running = new AtomicInteger
@@ -77,11 +77,17 @@ abstract class EvaluateSettings[ScopeType] {
     getResults(delegates)
   }
 
-  private[this] def getResults(implicit delegates: ScopeType => Seq[ScopeType]) =
-    static.toTypedSeq.foldLeft(empty) {
-      case (ss, static.TPair(key, node)) =>
-        if (key.key.isLocal) ss else ss.set(key.scope, key.key, node.get)
+  private[this] def getResults(implicit delegates: ScopeType => Seq[ScopeType]) = {
+    val data = new java.util.HashMap[ScopeType, AttributeMap]()
+    static.toTypedSeq.foreach {
+      case (static.TPair(key, node)) =>
+        if (!key.key.isLocal) {
+          val map = data.getOrDefault(key.scope, AttributeMap.empty)
+          data.put(key.scope, map.put(key.key, node.get))
+        }
     }
+    settings(new WrappedMap(data))
+  }
 
   private[this] val getValue = λ[INode ~> Id](_.get)
 
