@@ -872,24 +872,6 @@ private[sbt] object Load {
   ): LoadedProjects =
     /*timed(s"Load.loadTransitive(${ newProjects.map(_.id) })", log)*/ {
 
-      def load(newProjects: Seq[Project], acc: Seq[Project], generated: Seq[File]) = {
-        loadTransitive(
-          newProjects,
-          buildBase,
-          plugins,
-          eval,
-          injectSettings,
-          acc,
-          memoSettings,
-          log,
-          false,
-          buildUri,
-          context,
-          generated,
-          Nil
-        )
-      }
-
       // load all relevant configuration files (.sbt, as .scala already exists at this point)
       def discover(base: File): DiscoveredProjects = {
         val auto =
@@ -928,67 +910,76 @@ private[sbt] object Load {
         (p2, projectLevelExtra)
       }
 
-      // Discover any new project definition for the base directory of this project, and load all settings.
-      def discoverAndLoad(p: Project, rest: Seq[Project]): LoadedProjects = {
-        val DiscoveredProjects(rootOpt, discovered, files, extraFiles, generated) = discover(
-          p.base
-        )
-
-        // TODO: We assume here the project defined in a build.sbt WINS because the original was a
-        // phony.  However, we may want to 'merge' the two, or only do this if the original was a
-        // default generated project.
-        val root = rootOpt.getOrElse(p)
-        val (finalRoot, projectLevelExtra) = finalizeProject(root, files, extraFiles, true)
-        val newProjects = rest ++ discovered ++ projectLevelExtra
-        val newAcc = acc :+ finalRoot
-        val newGenerated = generated ++ generatedConfigClassFiles
-        load(newProjects, newAcc, newGenerated)
-      }
+      // non-recursive version of rec
+      def load(newProjects: Seq[Project], acc: Seq[Project], generated: Seq[File]) =
+        rec(newProjects, acc, false, generated, Nil)
 
       // Load all config files AND finalize the project at the root directory, if it exists.
       // Continue loading if we find any more.
-      newProjects match {
-        case Seq(next, rest @ _*) =>
-          log.debug(s"[Loading] Loading project ${next.id} @ ${next.base}")
-          discoverAndLoad(next, rest)
-        case Nil if makeOrDiscoverRoot =>
-          log.debug(s"[Loading] Scanning directory $buildBase")
-          val DiscoveredProjects(rootOpt, discovered, files, extraFiles, generated) = discover(
-            buildBase
-          )
-          val discoveredIdsStr = discovered.map(_.id).mkString(",")
-          val (root, expand, moreProjects, otherProjects) = rootOpt match {
-            case Some(root) =>
-              log.debug(s"[Loading] Found root project ${root.id} w/ remaining $discoveredIdsStr")
-              (root, true, discovered, LoadedProjects(Nil, Nil))
-            case None =>
-              log.debug(s"[Loading] Found non-root projects $discoveredIdsStr")
-              // Here we do something interesting... We need to create an aggregate root project
-              val otherProjects = load(discovered, acc, Nil)
-              val root = {
-                val existingIds = otherProjects.projects.map(_.id)
-                val defaultID = autoID(buildBase, context, existingIds)
-                val refs = existingIds.map(id => ProjectRef(buildUri, id))
-                if (discovered.isEmpty || java.lang.Boolean.getBoolean("sbt.root.ivyplugin"))
-                  BuildDef.defaultAggregatedProject(defaultID, buildBase, refs)
-                else BuildDef.generatedRootWithoutIvyPlugin(defaultID, buildBase, refs)
-              }
-              (root, false, Nil, otherProjects)
-          }
-          val (finalRoot, projectLevelExtra) =
-            timed(s"Load.loadTransitive: finalizeProject($root)", log) {
-              finalizeProject(root, files, extraFiles, expand)
+      @tailrec
+      def rec(
+          newProjects: Seq[Project],
+          acc: Seq[Project],
+          makeOrDiscoverRoot: Boolean,
+          generated: Seq[File],
+          extraSbtFiles: Seq[File]
+      ): LoadedProjects = {
+        newProjects match {
+          case Seq(next, rest @ _*) =>
+            log.debug(s"[Loading] Loading project ${next.id} @ ${next.base}")
+            // Discover any new project definition for the base directory of this project, and load all settings.
+            val DiscoveredProjects(rootOpt, discovered, files, extraFiles, generated) =
+              discover(next.base)
+
+            // TODO: We assume here the project defined in a build.sbt WINS because the original was a
+            // phony.  However, we may want to 'merge' the two, or only do this if the original was a
+            // default generated project.
+            val root = rootOpt.getOrElse(next)
+            val (finalRoot, projectLevelExtra) = finalizeProject(root, files, extraFiles, true)
+            val newProjects = rest ++ discovered ++ projectLevelExtra
+            val newAcc = acc :+ finalRoot
+            val newGenerated = generated ++ generatedConfigClassFiles
+            rec(newProjects, newAcc, false, newGenerated, Nil)
+          case Nil if makeOrDiscoverRoot =>
+            log.debug(s"[Loading] Scanning directory $buildBase")
+            val DiscoveredProjects(rootOpt, discovered, files, extraFiles, generated) = discover(
+              buildBase
+            )
+            val discoveredIdsStr = discovered.map(_.id).mkString(",")
+            val (root, expand, moreProjects, otherProjects) = rootOpt match {
+              case Some(root) =>
+                log.debug(s"[Loading] Found root project ${root.id} w/ remaining $discoveredIdsStr")
+                (root, true, discovered, LoadedProjects(Nil, Nil))
+              case None =>
+                log.debug(s"[Loading] Found non-root projects $discoveredIdsStr")
+                // Here we do something interesting... We need to create an aggregate root project
+                val otherProjects = load(discovered, acc, Nil)
+                val root = {
+                  val existingIds = otherProjects.projects.map(_.id)
+                  val defaultID = autoID(buildBase, context, existingIds)
+                  val refs = existingIds.map(id => ProjectRef(buildUri, id))
+                  if (discovered.isEmpty || java.lang.Boolean.getBoolean("sbt.root.ivyplugin"))
+                    BuildDef.defaultAggregatedProject(defaultID, buildBase, refs)
+                  else BuildDef.generatedRootWithoutIvyPlugin(defaultID, buildBase, refs)
+                }
+                (root, false, Nil, otherProjects)
             }
-          val newProjects = moreProjects ++ projectLevelExtra
-          val newAcc = finalRoot +: (acc ++ otherProjects.projects)
-          val newGenerated =
-            generated ++ otherProjects.generatedConfigClassFiles ++ generatedConfigClassFiles
-          load(newProjects, newAcc, newGenerated)
-        case Nil =>
-          val projectIds = acc.map(_.id).mkString("(", ", ", ")")
-          log.debug(s"[Loading] Done in $buildBase, returning: $projectIds")
-          LoadedProjects(acc, generatedConfigClassFiles)
+            val (finalRoot, projectLevelExtra) =
+              timed(s"Load.loadTransitive: finalizeProject($root)", log) {
+                finalizeProject(root, files, extraFiles, expand)
+              }
+            val newProjects = moreProjects ++ projectLevelExtra
+            val newAcc = finalRoot +: (acc ++ otherProjects.projects)
+            val newGenerated =
+              generated ++ otherProjects.generatedConfigClassFiles ++ generatedConfigClassFiles
+            rec(newProjects, newAcc, false, newGenerated, Nil)
+          case Nil =>
+            val projectIds = acc.map(_.id).mkString("(", ", ", ")")
+            log.debug(s"[Loading] Done in $buildBase, returning: $projectIds")
+            LoadedProjects(acc, generatedConfigClassFiles)
+        }
       }
+      rec(newProjects, acc, makeOrDiscoverRoot, generatedConfigClassFiles, extraSbtFiles)
     }
 
   private[this] def translateAutoPluginException(
