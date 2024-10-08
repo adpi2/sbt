@@ -627,7 +627,8 @@ lazy val scriptedSbtProj = (project in file("scripted-sbt"))
     mimaSettings,
     scriptedSbtMimaSettings,
   )
-  .configure(addSbtIO, addSbtCompilerInterface, addSbtLmCore)
+  .dependsOn(lmCore)
+  .configure(addSbtIO, addSbtCompilerInterface)
 
 lazy val dependencyTreeProj = (project in file("dependency-tree"))
   .dependsOn(sbtProj)
@@ -685,12 +686,12 @@ lazy val actionsProj = (project in file("main-actions"))
       exclude[ReversedMissingMethodProblem]("sbt.compiler.Eval#EvalType.sourceName"),
     ),
   )
+  .dependsOn(lmCore)
   .configure(
     addSbtIO,
     addSbtCompilerInterface,
     addSbtCompilerClasspath,
     addSbtCompilerApiInfo,
-    addSbtLmCore,
     addSbtZinc
   )
 
@@ -791,11 +792,11 @@ lazy val commandProj = (project in file("main-command"))
       }
     },
   )
+  .dependsOn(lmCore)
   .configure(
     addSbtIO,
     addSbtCompilerInterface,
     addSbtCompilerClasspath,
-    addSbtLmCore,
     addSbtZinc
   )
 
@@ -871,12 +872,8 @@ lazy val mainSettingsProj = (project in file("main-settings"))
       exclude[IncompatibleSignatureProblem]("sbt.TupleSyntax.t*ToTable*"),
     ),
   )
-  .configure(
-    addSbtIO,
-    addSbtCompilerInterface,
-    addSbtCompilerClasspath,
-    addSbtLmCore
-  )
+  .dependsOn(lmCore)
+  .configure(addSbtIO, addSbtCompilerInterface, addSbtCompilerClasspath)
 
 lazy val zincLmIntegrationProj = (project in file("zinc-lm-integration"))
   .settings(
@@ -892,7 +889,8 @@ lazy val zincLmIntegrationProj = (project in file("zinc-lm-integration"))
     ),
     libraryDependencies += launcherInterface,
   )
-  .configure(addSbtZincCompileCore, addSbtLmCore, addSbtLmIvyTest)
+  .dependsOn(lmCore, lmIvy)
+  .configure(addSbtZincCompileCore)
 
 lazy val buildFileProj = (project in file("buildfile"))
   .dependsOn(
@@ -903,13 +901,8 @@ lazy val buildFileProj = (project in file("buildfile"))
     name := "build file",
     libraryDependencies ++= Seq(scalaCompiler),
   )
-  .configure(
-    addSbtIO,
-    addSbtLmCore,
-    addSbtLmIvy,
-    addSbtCompilerInterface,
-    addSbtZincCompileCore
-  )
+  .dependsOn(lmCore, lmIvy)
+  .configure(addSbtIO, addSbtCompilerInterface, addSbtZincCompileCore)
 
 // The main integration project for sbt.  It brings all of the projects together, configures them, and provides for overriding conventions.
 lazy val mainProj = (project in file("main"))
@@ -958,13 +951,8 @@ lazy val mainProj = (project in file("main"))
     // mimaSettings,
     // mimaBinaryIssueFilters ++= Vector(),
   )
-  .configure(
-    addSbtIO,
-    addSbtLmCore,
-    addSbtLmIvy,
-    addSbtCompilerInterface,
-    addSbtZincCompileCore
-  )
+  .dependsOn(lmCore, lmIvy)
+  .configure(addSbtIO, addSbtCompilerInterface, addSbtZincCompileCore)
 
 // Strictly for bringing implicits and aliases from subsystems into the top-level sbt namespace through a single package object
 //  technically, we need a dependency on all of mainProj's dependencies, but we don't do that since this is strictly an integration project
@@ -1415,7 +1403,8 @@ lazy val lmCore = (project in file("core"))
       (((srcs --- sdirs --- base) pair (relativeTo(sdirs) | relativeTo(base) | flat)) toSeq)
     },
   )
-  .configure(addSbtIO, addSbtUtilLogging, addSbtUtilPosition, addSbtUtilCache, addSbtCompilerInterface)
+  .dependsOn(utilLogging, utilPosition, utilCache)
+  .configure(addSbtIO, addSbtCompilerInterface)
 
 lazy val lmIvy = (project in file("ivy"))
   // .enablePlugins(ContrabandPlugin, JsonCodecPlugin)
@@ -1427,8 +1416,8 @@ lazy val lmIvy = (project in file("ivy"))
     contrabandSjsonNewVersion := sjsonNewVersion,
     libraryDependencies ++= Seq(
       ivy,
-      sjsonnewScalaJson.value,
-      sjsonnew.value,
+      sjsonNewScalaJson.value,
+      sjsonNewCore.value,
       scalaTest % Test,
       scalaCheck % Test,
       scalaVerify % Test,
