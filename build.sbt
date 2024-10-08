@@ -5,6 +5,7 @@ import com.typesafe.tools.mima.core._
 import local.Scripted
 import java.nio.file.{ Files, Path => JPath }
 import java.util.Locale
+import sbt.internal.inc.Analysis
 
 import scala.util.Try
 
@@ -1370,9 +1371,9 @@ lazy val lmCore = (project in file("core"))
       // scalaCompiler.value,
       launcherInterface,
       gigahorseApacheHttp,
-      scalaXml,
-      sjsonnewScalaJson.value % Optional,
-      sjsonnew.value % Optional,
+      scalaXml.value,
+      sjsonNewScalaJson.value % Optional,
+      sjsonNewCore.value % Optional,
       scalaTest % Test,
       scalaCheck % Test,
       scalaVerify % Test,
@@ -1383,7 +1384,7 @@ lazy val lmCore = (project in file("core"))
           version.value,
           resourceManaged.value,
           streams.value,
-          (Compile / compile).value
+          (Compile / compile).value.asInstanceOf[Analysis]
         )
       )
       .taskValue,
@@ -1400,6 +1401,7 @@ lazy val lmCore = (project in file("core"))
       val srcs = (Compile / managedSources).value
       val sdirs = (Compile / managedSourceDirectories).value
       val base = baseDirectory.value
+      import Path._
       (((srcs --- sdirs --- base) pair (relativeTo(sdirs) | relativeTo(base) | flat)) toSeq)
     },
   )
