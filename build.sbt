@@ -1492,7 +1492,7 @@ lazy val definitions = project
   )
 
 lazy val lmCoursier = project
-  .in(file("modules/lm-coursier"))
+  .in(file("lm-coursier"))
   .settings(
     shared,
     crossScalaVersions := Seq(scala212, scala213, scala3),
@@ -1525,7 +1525,7 @@ lazy val lmCoursier = project
   )
 
 lazy val lmCoursierShadedPublishing = project
-  .in(file("modules/lm-coursier/target/shaded-publishing-module"))
+  .in(file("lm-coursier/target/shaded-publishing-module"))
   .settings(
     name := "librarymanagement-coursier",
     crossScalaVersions := Seq(scala212, scala213, scala3),
@@ -1533,7 +1533,7 @@ lazy val lmCoursierShadedPublishing = project
   )
 
 lazy val lmCoursierShaded = project
-  .in(file("modules/lm-coursier/target/shaded-module"))
+  .in(file("lm-coursier/target/shaded-module"))
   .settings(
     shared,
     crossScalaVersions := Seq(scala212, scala213, scala3),
