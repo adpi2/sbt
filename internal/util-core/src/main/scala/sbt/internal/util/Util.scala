@@ -71,4 +71,10 @@ object Util {
   extension [A](value: A) {
     def some: Option[A] = (Some(value): Option[A])
   }
+
+  private[sbt] def withCaching[A, B](f: A => B): A => B = {
+    import scala.collection.mutable
+    val cache: mutable.Map[A, B] = mutable.Map.empty
+    a => cache.getOrElseUpdate(a, f(a))
+  }
 }

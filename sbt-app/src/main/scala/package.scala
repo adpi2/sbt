@@ -33,7 +33,6 @@ package object sbt
     fillTaskAxis,
     mapScope,
     transform,
-    transformRef,
     inThisBuild,
     inScope,
     normalizeModuleID

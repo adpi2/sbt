@@ -47,12 +47,15 @@ object Scope:
 
   def replaceThis(thisScope: Scope): Scope => Scope =
     (scope: Scope) =>
-      Scope(
-        subThis(thisScope.project, scope.project),
-        subThis(thisScope.config, scope.config),
-        subThis(thisScope.task, scope.task),
-        subThis(thisScope.extra, scope.extra)
-      )
+      if scope.project == This || scope.config == This || scope.task == This || scope.extra == This
+      then
+        Scope(
+          subThis(thisScope.project, scope.project),
+          subThis(thisScope.config, scope.config),
+          subThis(thisScope.task, scope.task),
+          subThis(thisScope.extra, scope.extra)
+        )
+      else scope
 
   def subThis[T](sub: ScopeAxis[T], into: ScopeAxis[T]): ScopeAxis[T] =
     if (into == This) sub else into
@@ -73,9 +76,14 @@ object Scope:
     }
 
   def mapReference(f: Reference => Reference): Scope => Scope = {
-    case Scope(Select(ref), a, b, c) => Scope(Select(f(ref)), a, b, c)
-    case x                           => x
+    // add caching to avoid creating duplicated instances which survive the GC
+    val g = withCaching((s: Select[Reference]) => Select(f(s.s)))
+    s =>
+      s match
+        case Scope(s: Select[Reference] @unchecked, a, b, c) => Scope(g(s), a, b, c)
+        case x                                               => x
   }
+
   def resolveProject(uri: URI, rootProject: URI => String): Scope => Scope =
     mapReference(ref => resolveReference(uri, rootProject, ref))
   def buildResolve(uri: URI): Scope => Scope =
