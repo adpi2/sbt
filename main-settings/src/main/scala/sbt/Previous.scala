@@ -76,6 +76,9 @@ object Previous {
     KeyRanks.Invisible
   )
 
+  private[sbt] val globalCache = Global / cache
+  private[sbt] val globalReferences = Global / references
+
   private[sbt] class Key[T](val task: ScopedKey[Task[T]], val enclosing: AnyTaskKey) {
     override def equals(o: Any): Boolean = o match {
       case that: Key[_] => this.task == that.task && this.enclosing == that.enclosing
@@ -154,10 +157,9 @@ object Previous {
 
   /** Public as a macro implementation detail.  Do not call directly. */
   def runtime[T](skey: TaskKey[T])(implicit format: JsonFormat[T]): Initialize[Task[Option[T]]] = {
-    val inputs = (Global / cache)
-      .zip(Def.validated(skey, selfRefOk = true))
-      .zip(Global / references)
-    inputs { case ((prevTask, resolved), refs) =>
+    type Tup = (Task[Previous], ScopedKey[Task[T]], References)
+    val inputs = (globalCache, Def.validated(skey, selfRefOk = true), globalReferences)
+    Def.app[Tup, Task[Option[T]]](inputs) { case (prevTask, resolved, refs) =>
       val key = Key(resolved, resolved)
       refs.recordReference(key, format) // always evaluated on project load
       prevTask.map(_.get(key)) // evaluated if this task is evaluated
@@ -168,11 +170,10 @@ object Previous {
   def runtimeInEnclosingTask[T](skey: TaskKey[T])(implicit
       format: JsonFormat[T]
   ): Initialize[Task[Option[T]]] = {
-    val inputs = (Global / cache)
-      .zip(Def.validated(skey, selfRefOk = true))
-      .zip(Global / references)
-      .zip(Def.resolvedScoped)
-    inputs { case (((prevTask, resolved), refs), inTask) =>
+    type Tup = (Task[Previous], ScopedKey[Task[T]], References, ScopedKey[?])
+    val inputs =
+      (globalCache, Def.validated(skey, selfRefOk = true), globalReferences, Def.resolvedScoped)
+    Def.app[Tup, Task[Option[T]]](inputs) { case (prevTask, resolved, refs, inTask) =>
       val key = Key(resolved, inTask.asInstanceOf[ScopedKey[Task[Any]]])
       refs.recordReference(key, format) // always evaluated on project load
       prevTask.map(_.get(key)) // evaluated if this task is evaluated

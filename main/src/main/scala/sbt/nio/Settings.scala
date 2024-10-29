@@ -255,7 +255,7 @@ private[sbt] object Settings {
   }
 
   /**
-   * Provides an automatically generated clean method for a task that provides fileOutputs.
+   * Provides an automatically generated clean method for any task.
    *
    * @param scope the scope to add the custom clean
    * @return a task specific clean implementation
@@ -274,7 +274,7 @@ private[sbt] object Settings {
   private[sbt] def cleanImpl[T: JsonFormat: ToSeqPath](taskKey: TaskKey[T]): Def.Setting[?] = {
     val taskScope = taskKey.scope.rescope(taskKey.key)
     addTaskDefinition(
-      taskScope / sbt.Keys.clean :=
+      scope / sbt.Keys.clean :=
         // the clean file task needs to run first because the previous cache gets blown away
         // by the second task
         Def
@@ -282,7 +282,7 @@ private[sbt] object Settings {
             Def.unit(Clean.cleanFileOutputTask(taskKey).value)
           }
           .flatMapTask { case _ =>
-            Clean.task(taskScope, full = false)
+            Clean.task(scope, full = false)
           }
           .value
     )
@@ -330,7 +330,7 @@ private[sbt] object Settings {
   ): List[Def.Setting[?]] = {
     val scope = taskKey.scope.rescope(taskKey.key)
     val changes = changedFilesImpl(scope, changedOutputFiles, outputFileStamps) :: Nil
-    allOutputPathsImpl(scope) :: outputFileStampsImpl(scope) :: cleanImpl(taskKey) :: changes
+    allOutputPathsImpl(scope) :: outputFileStampsImpl(scope) :: cleanImpl(scope, taskKey) :: changes
   }
 
   private def allOutputPathsImpl(scope: Scope): Def.Setting[?] =

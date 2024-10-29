@@ -568,7 +568,7 @@ object EvaluateTask {
       state: State,
       streams: Streams
   ): Unit =
-    for (referenced <- (Global / Previous.references).get(Project.structure(state).data))
+    for (referenced <- Previous.globalReferences.get(Project.structure(state).data))
       Previous.complete(referenced, results, streams)
 
   def applyResults[T](
