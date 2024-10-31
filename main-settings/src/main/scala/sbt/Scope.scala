@@ -36,26 +36,48 @@ object Scope:
   val Global: Scope = Scope(Zero, Zero, Zero, Zero)
   val GlobalScope: Scope = Global
 
+  private val identity: Scope => Scope = Predef.identity[Scope]
   private[sbt] final val inIsDeprecated =
     "`in` is deprecated; migrate to slash syntax - https://www.scala-sbt.org/1.x/docs/Migrating-from-sbt-013x.html#slash"
 
-  def resolveScope(thisScope: Scope, current: URI, rootProject: URI => String): Scope => Scope =
-    resolveProject(current, rootProject) compose replaceThis(thisScope) compose subThisProject
+  def resolveScope(thisScope: Scope, current: URI, rootProject: URI => String)(
+      scope: Scope
+  ): Scope =
+    partialResolveScope(thisScope, current, rootProject).applyOrElse(scope, identity)
+  private[sbt] def partialResolveScope(
+      thisScope: Scope,
+      current: URI,
+      rootProject: URI => String
+  ): PartialFunction[Scope, Scope] =
+    combine(
+      partialSubThisProject,
+      partialReplaceThis(thisScope),
+      partialResolveProject(current, rootProject)
+    )
 
-  def resolveBuildScope(thisScope: Scope, current: URI): Scope => Scope =
-    buildResolve(current) compose replaceThis(thisScope) compose subThisProject
+  def resolveBuildScope(thisScope: Scope, current: URI)(scope: Scope): Scope =
+    partialResolveBuildScope(thisScope, current).applyOrElse(scope, identity)
+  private[sbt] def partialResolveBuildScope(
+      thisScope: Scope,
+      current: URI
+  ): PartialFunction[Scope, Scope] =
+    combine(partialSubThisProject, partialReplaceThis(thisScope), partialBuildResolve(current))
 
-  def replaceThis(thisScope: Scope): Scope => Scope =
-    (scope: Scope) =>
-      if scope.project == This || scope.config == This || scope.task == This || scope.extra == This
-      then
-        Scope(
-          subThis(thisScope.project, scope.project),
-          subThis(thisScope.config, scope.config),
-          subThis(thisScope.task, scope.task),
-          subThis(thisScope.extra, scope.extra)
-        )
-      else scope
+  private def combine(fs: PartialFunction[Scope, Scope]*): PartialFunction[Scope, Scope] =
+    new PartialFunction[Scope, Scope]:
+      def isDefinedAt(x: Scope): Boolean = fs.exists(_.isDefinedAt(x))
+      def apply(x: Scope): Scope = fs.foldLeft(x)((x, f) => f.applyOrElse(x, identity))
+
+  def replaceThis(thisScope: Scope)(scope: Scope): Scope =
+    partialReplaceThis(thisScope).applyOrElse(scope, identity)
+  private[sbt] def partialReplaceThis(thisScope: Scope): PartialFunction[Scope, Scope] =
+    case s if s.project == This || s.config == This || s.task == This || s.extra == This =>
+      Scope(
+        subThis(thisScope.project, s.project),
+        subThis(thisScope.config, s.config),
+        subThis(thisScope.task, s.task),
+        subThis(thisScope.extra, s.extra)
+      )
 
   def subThis[T](sub: ScopeAxis[T], into: ScopeAxis[T]): ScopeAxis[T] =
     if (into == This) sub else into
@@ -64,9 +86,8 @@ object Scope:
    * `Select(ThisProject)` cannot be resolved by [[resolveProject]] (it doesn't know what to replace it with), so we
    * perform this transformation so that [[replaceThis]] picks it up.
    */
-  def subThisProject: Scope => Scope = {
+  private def partialSubThisProject: PartialFunction[Scope, Scope] = {
     case s @ Scope(Select(ThisProject), _, _, _) => s.copy(project = This)
-    case s                                       => s
   }
 
   def fillTaskAxis(scope: Scope, key: AttributeKey[?]): Scope =
@@ -75,18 +96,18 @@ object Scope:
       case _            => scope.copy(task = Select(key))
     }
 
-  def mapReference(f: Reference => Reference): Scope => Scope = {
+  private def mapReference(f: Reference => Reference): PartialFunction[Scope, Scope] = {
     // add caching to avoid creating duplicated instances which survive the GC
-    val g = withCaching((s: Select[Reference]) => Select(f(s.s)))
-    s =>
-      s match
-        case Scope(s: Select[Reference] @unchecked, a, b, c) => Scope(g(s), a, b, c)
-        case x                                               => x
+    val g = withCaching((s: Reference) => Select(f(s)))
+    { case Scope(Select(s), a, b, c) => Scope(g(s), a, b, c) }
   }
 
-  def resolveProject(uri: URI, rootProject: URI => String): Scope => Scope =
+  private[sbt] def partialResolveProject(
+      uri: URI,
+      rootProject: URI => String
+  ): PartialFunction[Scope, Scope] =
     mapReference(ref => resolveReference(uri, rootProject, ref))
-  def buildResolve(uri: URI): Scope => Scope =
+  private def partialBuildResolve(uri: URI): PartialFunction[Scope, Scope] =
     mapReference(ref => resolveBuildOnly(uri, ref))
 
   def resolveBuildOnly(current: URI, ref: Reference): Reference =
@@ -315,7 +336,7 @@ object Scope:
       rootProject: URI => String,
       taskInherit: AttributeKey[?] => Seq[AttributeKey[?]],
   )(rawScope: Scope): Seq[Scope] = {
-    val scope = Scope.replaceThis(GlobalScope)(rawScope)
+    val scope = replaceThis(GlobalScope)(rawScope)
 
     // This is a hot method that gets called many times
     def expandDelegateScopes(

@@ -332,66 +332,69 @@ object Project:
   def fillTaskAxis(scoped: ScopedKey[?]): ScopedKey[?] =
     ScopedKey(Scope.fillTaskAxis(scoped.scope, scoped.key), scoped.key)
 
-  def mapScope(f: Scope => Scope): [a] => ScopedKey[a] => ScopedKey[a] =
+  def mapScope(f: PartialFunction[Scope, Scope]): Def.PartialMapScoped =
     // add caching to avoid creating duplicated instances which survive the GC
     val g = Util.withCaching(f)
-    ([a] => (k: ScopedKey[a]) => ScopedKey(g(k.scope), k.key))
+    new Def.PartialMapScoped:
+      def isDefinedAt(key: ScopedKey[?]): Boolean = f.isDefinedAt(key.scope)
+      def apply[A](key: ScopedKey[A]): ScopedKey[A] =
+        if isDefinedAt(key) then key.copy(g(key.scope)) else key
 
-  def transform(g: Scope => Scope, ss: Seq[Def.Setting[?]]): Seq[Def.Setting[?]] =
+  def transform(g: PartialFunction[Scope, Scope], ss: Seq[Def.Setting[?]]): Seq[Def.Setting[?]] =
     val f = mapScope(g)
     ss.map(_.mapKey(f).mapReferenced(f))
 
-def inThisBuild(ss: Seq[Setting[?]]): Seq[Setting[?]] =
-  inScope(ThisScope.copy(project = Select(ThisBuild)))(ss)
+  def inThisBuild(ss: Seq[Setting[?]]): Seq[Setting[?]] =
+    inScope(ThisScope.copy(project = Select(ThisBuild)))(ss)
 
-private[sbt] def inThisBuild[T](i: Initialize[T]): Initialize[T] =
-  inScope(ThisScope.copy(project = Select(ThisBuild)), i)
+  private[sbt] def inThisBuild[T](i: Initialize[T]): Initialize[T] =
+    inScope(ThisScope.copy(project = Select(ThisBuild)), i)
 
-private[sbt] def inConfig[T](conf: Configuration, i: Initialize[T]): Initialize[T] =
-  inScope(ThisScope.copy(config = Select(conf)), i)
+  private[sbt] def inConfig[T](conf: Configuration, i: Initialize[T]): Initialize[T] =
+    inScope(ThisScope.copy(config = Select(conf)), i)
 
-def inTask(t: Scoped)(ss: Seq[Setting[?]]): Seq[Setting[?]] =
-  inScope(ThisScope.copy(task = Select(t.key)))(ss)
+  def inTask(t: Scoped)(ss: Seq[Setting[?]]): Seq[Setting[?]] =
+    inScope(ThisScope.copy(task = Select(t.key)))(ss)
 
-private[sbt] def inTask[A](t: Scoped, i: Initialize[A]): Initialize[A] =
-  inScope(ThisScope.copy(task = Select(t.key)), i)
+  private[sbt] def inTask[A](t: Scoped, i: Initialize[A]): Initialize[A] =
+    inScope(ThisScope.copy(task = Select(t.key)), i)
 
-def inScope(scope: Scope)(ss: Seq[Setting[?]]): Seq[Setting[?]] =
-  Project.transform(Scope.replaceThis(scope), ss)
+  def inScope(scope: Scope)(ss: Seq[Setting[?]]): Seq[Setting[?]] =
+    Project.transform(Scope.partialReplaceThis(scope), ss)
 
-private[sbt] def inScope[A](scope: Scope, i: Initialize[A]): Initialize[A] =
-  i.mapReferenced(Project.mapScope(Scope.replaceThis(scope)))
+  private[sbt] def inScope[A](scope: Scope, i: Initialize[A]): Initialize[A] =
+    i.mapReferenced(Project.mapScope(Scope.partialReplaceThis(scope)))
 
-/**
- * Normalize a String so that it is suitable for use as a dependency management module identifier.
- * This is a best effort implementation, since valid characters are not documented or consistent.
- */
-def normalizeModuleID(id: String): String = normalizeBase(id)
+  /**
+   * Normalize a String so that it is suitable for use as a dependency management module identifier.
+   * This is a best effort implementation, since valid characters are not documented or consistent.
+   */
+  def normalizeModuleID(id: String): String = normalizeBase(id)
 
-/** Constructs a valid Project ID based on `id` and returns it in Right or returns the error message in Left if one cannot be constructed. */
-private[sbt] def normalizeProjectID(id: String): Either[String, String] = {
-  val attempt = normalizeBase(id)
-  val refined =
-    if (attempt.length < 1) "root"
-    else if (!validProjectIDStart(attempt.substring(0, 1))) "root-" + attempt
-    else attempt
-  validProjectID(refined).toLeft(refined)
-}
+  /** Constructs a valid Project ID based on `id` and returns it in Right or returns the error message in Left if one cannot be constructed. */
+  private[sbt] def normalizeProjectID(id: String): Either[String, String] = {
+    val attempt = normalizeBase(id)
+    val refined =
+      if (attempt.length < 1) "root"
+      else if (!validProjectIDStart(attempt.substring(0, 1))) "root-" + attempt
+      else attempt
+    validProjectID(refined).toLeft(refined)
+  }
 
-private def normalizeBase(s: String) =
-  s.toLowerCase(Locale.ENGLISH).replaceAll("""\W+""", "-")
+  private def normalizeBase(s: String) =
+    s.toLowerCase(Locale.ENGLISH).replaceAll("""\W+""", "-")
 
-private[sbt] enum LoadAction:
-  case Return
-  case Current
-  case Plugins
+  private[sbt] enum LoadAction:
+    case Return
+    case Current
+    case Plugins
 
-private[sbt] lazy val loadActionParser: Parser[LoadAction] = {
-  import DefaultParsers.*
-  token(
-    Space ~> ("plugins" ^^^ LoadAction.Plugins | "return" ^^^ LoadAction.Return)
-  ) ?? LoadAction.Current
-}
+  private[sbt] lazy val loadActionParser: Parser[LoadAction] = {
+    import DefaultParsers.*
+    token(
+      Space ~> ("plugins" ^^^ LoadAction.Plugins | "return" ^^^ LoadAction.Return)
+    ) ?? LoadAction.Current
+  }
 end Project
 
 sealed trait ResolvedProject extends ProjectDefinition[ProjectRef] {

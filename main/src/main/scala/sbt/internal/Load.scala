@@ -332,13 +332,16 @@ private[sbt] object Load {
   // 2. the defining key is stored on constructed tasks: used for error reporting among other things
   // 3. resolvedScoped is replaced with the defining key as a value
   // Note: this must be idempotent.
-  def finalTransforms(ss: Seq[Setting[?]]): Seq[Setting[?]] = {
-    def mapSpecial(to: ScopedKey[?]): [a] => ScopedKey[a] => ScopedKey[a] =
-      [a] =>
-        (key: ScopedKey[a]) =>
-          if key.key == streams.key then
-            ScopedKey(Scope.fillTaskAxis(Scope.replaceThis(to.scope)(key.scope), to.key), key.key)
-          else key
+  def finalTransforms(ss: Seq[Setting[_]]): Seq[Setting[_]] = {
+    def mapSpecial(to: ScopedKey[_]): Def.PartialMapScoped = new Def.PartialMapScoped:
+      def isDefinedAt(key: ScopedKey[?]): Boolean = key.key == streams.key
+      def apply[A](key: ScopedKey[A]): ScopedKey[A] =
+        if isDefinedAt(key) then
+          ScopedKey(
+            Scope.fillTaskAxis(Scope.replaceThis(to.scope)(key.scope), to.key),
+            key.key
+          )
+        else key
     def setDefining[T](s: Setting[T]): Setting[T] =
       if s.key.key.tag.isTaskOrInputTask then
         s.mapInit { (key, value) =>
@@ -450,17 +453,18 @@ private[sbt] object Load {
   def transformProjectOnly(
       uri: URI,
       rootProject: URI => String,
-      settings: Seq[Setting[?]]
-  ): Seq[Setting[?]] =
-    Project.transform(Scope.resolveProject(uri, rootProject), settings)
+      settings: Seq[Setting[_]]
+  ): Seq[Setting[_]] =
+    Project.transform(Scope.partialResolveProject(uri, rootProject), settings)
 
   def transformSettings(
       thisScope: Scope,
       uri: URI,
       rootProject: URI => String,
-      settings: Seq[Setting[?]]
-  ): Seq[Setting[?]] = {
-    val transformed = Project.transform(Scope.resolveScope(thisScope, uri, rootProject), settings)
+      settings: Seq[Setting[_]]
+  ): Seq[Setting[_]] = {
+    val transformed =
+      Project.transform(Scope.partialResolveScope(thisScope, uri, rootProject), settings)
     Settings.inject(transformed)
   }
 
@@ -607,7 +611,7 @@ private[sbt] object Load {
 
   def buildSettings(unit: BuildUnit): Seq[Setting[?]] = {
     val buildScope = GlobalScope.copy(project = Select(BuildRef(unit.uri)))
-    val resolve = Scope.resolveBuildScope(buildScope, unit.uri)
+    val resolve = Scope.partialResolveBuildScope(buildScope, unit.uri)
     Project.transform(resolve, unit.definitions.builds.flatMap(_.settings))
   }
 

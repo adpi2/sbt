@@ -70,10 +70,13 @@ trait Init[ScopeType]:
     def scopedKey = this
   end ScopedKey
 
+  trait PartialMapScoped:
+    def isDefinedAt(key: ScopedKey[?]): Boolean
+    def apply[A](key: ScopedKey[A]): ScopedKey[A]
+
   type SettingSeq[A] = Seq[Setting[A]]
   type ScopedMap = IMap[ScopedKey, SettingSeq]
   type CompiledMap = Map[ScopedKey[?], Compiled[?]]
-  type MapScoped = [a] => ScopedKey[a] => ScopedKey[a]
   type ValidatedRef[A] = Either[Undefined, ScopedKey[A]]
   type ValidatedInit[A] = Either[Seq[Undefined], Initialize[A]]
   type ValidateRef = [a] => ScopedKey[a] => ValidatedRef[a]
@@ -174,8 +177,11 @@ trait Init[ScopeType]:
 
   def asFunction[A](s: Settings[ScopeType]): ScopedKey[A] => A = k => getValue(s, k)
 
-  def mapScope(f: ScopeType => ScopeType): MapScoped =
-    [a] => (k: ScopedKey[a]) => k.copy(scope = f(k.scope))
+  def mapScope(f: PartialFunction[ScopeType, ScopeType]): PartialMapScoped =
+    new PartialMapScoped:
+      override def isDefinedAt(key: ScopedKey[?]): Boolean = f.isDefinedAt(key.scope)
+      override def apply[A](key: ScopedKey[A]): ScopedKey[A] =
+        if isDefinedAt(key) then key.copy(f(key.scope)) else key
 
   private def applyDefaults(ss: Seq[Setting[?]]): Seq[Setting[?]] = {
     val result = new java.util.LinkedHashSet[Setting[?]]
@@ -643,7 +649,8 @@ trait Init[ScopeType]:
     def dependencies: Seq[ScopedKey[?]]
     def apply[A2](g: A1 => A2): Initialize[A2]
 
-    private[sbt] def mapReferenced(g: MapScoped): Initialize[A1]
+    private[sbt] def hasReferenceTo(f: ScopedKey[?] => Boolean): Boolean
+    private[sbt] def mapReferenced(g: PartialMapScoped): Initialize[A1]
     private[sbt] def mapConstant(g: MapConstant): Initialize[A1]
 
     private[sbt] def validateReferenced(g: ValidateRef): ValidatedInit[A1] =
@@ -702,7 +709,8 @@ trait Init[ScopeType]:
     def dependencies: Seq[ScopedKey[?]] =
       remove(init.dependencies.asInstanceOf[Seq[ScopedKey[A1]]], key)
 
-    def mapReferenced(g: MapScoped): Setting[A1] = make(key, init.mapReferenced(g), pos)
+    def mapReferenced(g: PartialMapScoped): Setting[A1] =
+      if init.hasReferenceTo(g.isDefinedAt) then make(key, init mapReferenced g, pos) else this
 
     def validateReferenced(g: ValidateRef): Either[Seq[Undefined], Setting[A1]] =
       init.validateReferenced(g).map(newI => make(key, newI, pos))
@@ -710,9 +718,11 @@ trait Init[ScopeType]:
     private[sbt] def validateKeyReferenced(g: ValidateKeyRef): Either[Seq[Undefined], Setting[A1]] =
       init.validateKeyReferenced(g).map(newI => make(key, newI, pos))
 
-    def mapKey(g: MapScoped): Setting[A1] = make(g(key), init, pos)
+    def mapKey(g: PartialMapScoped): Setting[A1] =
+      if g.isDefinedAt(key) then make(g(key), init, pos) else this
     def mapInit(f: (ScopedKey[A1], A1) => A1): Setting[A1] = make(key, init(t => f(key, t)), pos)
-    def mapConstant(g: MapConstant): Setting[A1] = make(key, init.mapConstant(g), pos)
+    def mapConstant(g: MapConstant): Setting[A1] =
+      if init.hasReferenceTo(g(_).isDefined) then make(key, init.mapConstant(g), pos) else this
     def withPos(pos: SourcePosition) = make(key, init, pos)
 
     def positionString: Option[String] = pos match
@@ -732,7 +742,7 @@ trait Init[ScopeType]:
 
     protected[sbt] def isDerived: Boolean = false
     private[sbt] def setScope(s: ScopeType): Setting[A1] =
-      make(key.copy(scope = s), init.mapReferenced(mapScope(const(s))), pos)
+      make(key.copy(scope = s), init.mapReferenced(mapScope { case _ => s }), pos)
 
     /** Turn this setting into a `DefaultSetting` if it's not already, otherwise returns `this` */
     private[sbt] def default(id: => Long = nextDefaultID()): DefaultSetting[A1] =
@@ -795,13 +805,13 @@ trait Init[ScopeType]:
   ): [A] => Initialize[A] => ValidatedInit[A] = [A] =>
     (fa: Initialize[A]) => (fa.validateKeyReferenced(g))
 
-  private def mapReferencedK(g: MapScoped): [A] => Initialize[A] => Initialize[A] = [A] =>
-    (fa: Initialize[A]) => (fa.mapReferenced(g))
-  private def mapConstantK(g: MapConstant): [A] => Initialize[A] => Initialize[A] = [A] =>
-    (fa: Initialize[A]) => (fa.mapConstant(g))
-  private def evaluateK(g: Settings[ScopeType]): [A] => Initialize[A] => A = [A] =>
-    (fa: Initialize[A]) => (fa.evaluate(g))
-  private def deps(ls: List[Initialize[?]]): Seq[ScopedKey[?]] =
+  private def mapReferencedK(g: PartialMapScoped): [A] => Initialize[A] => Initialize[A] =
+    [A] => (fa: Initialize[A]) => fa.mapReferenced(g)
+  private def mapConstantK(g: MapConstant): [A] => Initialize[A] => Initialize[A] =
+    [A] => (fa: Initialize[A]) => fa.mapConstant(g)
+  private def evaluateK(g: Settings[ScopeType]): [A] => Initialize[A] => A =
+    [A] => (fa: Initialize[A]) => fa.evaluate(g)
+  private def deps(ls: List[Initialize[_]]): Seq[ScopedKey[_]] =
     ls.flatMap(_.dependencies)
 
   /**
@@ -812,6 +822,7 @@ trait Init[ScopeType]:
   sealed trait Keyed[S, A1] extends Initialize[A1]:
     def scopedKey: ScopedKey[S]
     override final def dependencies = scopedKey :: Nil
+    private[sbt] override def hasReferenceTo(f: ScopedKey[?] => Boolean): Boolean = f(scopedKey)
     private[sbt] override def processAttributes[A2](init: A2)(f: (A2, AttributeMap) => A2): A2 =
       init
   end Keyed
@@ -821,8 +832,8 @@ trait Init[ScopeType]:
     override final def apply[A2](g: A1 => A2): Initialize[A2] =
       GetValue(scopedKey, g compose transform)
     override final def evaluate(ss: Settings[ScopeType]): A1 = transform(getValue(ss, scopedKey))
-    override final def mapReferenced(g: MapScoped): Initialize[A1] =
-      GetValue(g(scopedKey), transform)
+    override final def mapReferenced(g: PartialMapScoped): Initialize[A1] =
+      if g.isDefinedAt(scopedKey) then GetValue(g(scopedKey), transform) else this
 
     private[sbt] override final def validateKeyReferenced(g: ValidateKeyRef): ValidatedInit[A1] =
       g(scopedKey, false) match
@@ -843,7 +854,7 @@ trait Init[ScopeType]:
     override final def apply[A2](g: A1 => A2): Initialize[A2] =
       GetValue(scopedKey, g)
     override final def evaluate(ss: Settings[ScopeType]): A1 = getValue(ss, scopedKey)
-    override final def mapReferenced(g: MapScoped): Initialize[A1] = g(scopedKey)
+    override final def mapReferenced(g: PartialMapScoped): Initialize[A1] = g(scopedKey)
 
     private[sbt] override final def validateKeyReferenced(g: ValidateKeyRef): ValidatedInit[A1] =
       g(scopedKey, false) match
@@ -862,7 +873,11 @@ trait Init[ScopeType]:
     override def apply[A2](g2: ([x] => Initialize[x] => Initialize[x]) => A2): Initialize[A2] =
       map(this)(g2)
     override def evaluate(ss: Settings[ScopeType]): [x] => Initialize[x] => Initialize[x] = f
-    override def mapReferenced(g: MapScoped): Initialize[[x] => Initialize[x] => Initialize[x]] =
+    private[sbt] override def hasReferenceTo(f: ScopedKey[?] => Boolean): Boolean =
+      true // we don't know
+    override def mapReferenced(
+        g: PartialMapScoped
+    ): Initialize[[x] => Initialize[x] => Initialize[x]] =
       TransformCapture(mapReferencedK(g) ∙ f)
     override def mapConstant(g: MapConstant): Initialize[[x] => Initialize[x] => Initialize[x]] =
       TransformCapture(mapConstantK(g) ∙ f)
@@ -881,8 +896,9 @@ trait Init[ScopeType]:
     override def dependencies: Seq[ScopedKey[?]] = Nil
     override def apply[A2](g2: ScopedKey[A1] => A2): Initialize[A2] = map(this)(g2)
     override def evaluate(ss: Settings[ScopeType]): ScopedKey[A1] = key
-    override def mapReferenced(g: MapScoped): Initialize[ScopedKey[A1]] =
-      ValidationCapture(g(key), selfRefOk)
+    private[sbt] override def hasReferenceTo(f: ScopedKey[?] => Boolean): Boolean = f(key)
+    override def mapReferenced(g: PartialMapScoped): Initialize[ScopedKey[A1]] =
+      if g.isDefinedAt(key) then ValidationCapture(g(key), selfRefOk) else this
     override def mapConstant(g: MapConstant): Initialize[ScopedKey[A1]] = this
 
     override def validateKeyReferenced(g: ValidateKeyRef): ValidatedInit[ScopedKey[A1]] =
@@ -898,8 +914,10 @@ trait Init[ScopeType]:
       extends Initialize[A1]:
     override def dependencies: Seq[ScopedKey[?]] = in.dependencies
     override def apply[A2](g: A1 => A2): Initialize[A2] = Bind[S, A2](s => f(s)(g), in)
-    override def evaluate(ss: Settings[ScopeType]): A1 = f(in.evaluate(ss)).evaluate(ss)
-    override def mapReferenced(g: MapScoped) =
+    override def evaluate(ss: Settings[ScopeType]): A1 = f(in evaluate ss) evaluate ss
+    private[sbt] override def hasReferenceTo(g: ScopedKey[?] => Boolean): Boolean =
+      true // we don't know
+    override def mapReferenced(g: PartialMapScoped) =
       Bind[S, A1](s => f(s).mapReferenced(g), in.mapReferenced(g))
 
     override def validateKeyReferenced(g: ValidateKeyRef) =
@@ -914,35 +932,42 @@ trait Init[ScopeType]:
       in.processAttributes(init)(f)
   end Bind
 
-  private[sbt] final class Optional[S, A1](val a: Option[Initialize[S]], val f: Option[S] => A1)
+  private[sbt] final class Optional[S, A1](val input: Option[Initialize[S]], val f: Option[S] => A1)
       extends Initialize[A1]:
-    override def dependencies: Seq[ScopedKey[?]] = deps(a.toList)
-    override def apply[A2](g: A1 => A2): Initialize[A2] = new Optional[S, A2](a, g compose f)
+    override def dependencies: Seq[ScopedKey[?]] = deps(input.toList)
+    override def apply[A2](g: A1 => A2): Initialize[A2] = new Optional[S, A2](input, g compose f)
 
-    override def mapReferenced(g: MapScoped): Initialize[A1] =
-      Optional(a.map { mapReferencedK(g)[S] }, f)
+    private[sbt] override def hasReferenceTo(g: ScopedKey[?] => Boolean): Boolean =
+      input.exists(_.hasReferenceTo(g))
+    override def mapReferenced(g: PartialMapScoped): Initialize[A1] =
+      if hasReferenceTo(g.isDefinedAt) then Optional(input.map { mapReferencedK(g)[S] }, f)
+      else this
 
-    override def validateKeyReferenced(g: ValidateKeyRef): ValidatedInit[A1] = a match
+    override def validateKeyReferenced(g: ValidateKeyRef): ValidatedInit[A1] = input match
       case None    => Right(this)
       case Some(i) => Right(Optional(i.validateKeyReferenced(g).toOption, f))
 
-    override def mapConstant(g: MapConstant): Initialize[A1] = Optional(a map mapConstantK(g)[S], f)
+    override def mapConstant(g: MapConstant): Initialize[A1] =
+      if hasReferenceTo(g(_).isDefined) then Optional(input.map(mapConstantK(g)[S]), f)
+      else this
     override def evaluate(ss: Settings[ScopeType]): A1 =
-      f(a.flatMap { i => trapBadRef(evaluateK(ss)(i)) })
+      f(input.flatMap { i => trapBadRef(evaluateK(ss)(i)) })
 
     // proper solution is for evaluate to be deprecated or for external use only and a new internal method returning Either be used
     private def trapBadRef[A](run: => A): Option[A] =
       try Some(run)
       catch { case _: InvalidReference => None }
 
-    private[sbt] override def processAttributes[B](init: B)(f: (B, AttributeMap) => B): B = a match
-      case None    => init
-      case Some(i) => i.processAttributes(init)(f)
+    private[sbt] override def processAttributes[B](init: B)(f: (B, AttributeMap) => B): B =
+      input match
+        case None    => init
+        case Some(i) => i.processAttributes(init)(f)
   end Optional
 
   private[sbt] final class Value[A1](val value: () => A1) extends Initialize[A1]:
     override def dependencies: Seq[ScopedKey[?]] = Nil
-    override def mapReferenced(g: MapScoped): Initialize[A1] = this
+    private[sbt] override def hasReferenceTo(f: ScopedKey[?] => Boolean): Boolean = false
+    override def mapReferenced(g: PartialMapScoped): Initialize[A1] = this
     override def validateKeyReferenced(g: ValidateKeyRef): ValidatedInit[A1] = Right(this)
     override def apply[A2](g: A1 => A2): Initialize[A2] = Value[A2](() => g(value()))
     override def mapConstant(g: MapConstant): Initialize[A1] = this
@@ -953,7 +978,8 @@ trait Init[ScopeType]:
 
   private[sbt] object StaticScopes extends Initialize[Set[ScopeType]]:
     override def dependencies: Seq[ScopedKey[?]] = Nil
-    override def mapReferenced(g: MapScoped): Initialize[Set[ScopeType]] = this
+    private[sbt] override def hasReferenceTo(g: ScopedKey[?] => Boolean): Boolean = false
+    override def mapReferenced(g: PartialMapScoped): Initialize[Set[ScopeType]] = this
     override def validateKeyReferenced(g: ValidateKeyRef): ValidatedInit[Set[ScopeType]] =
       Right(this)
     override def apply[A2](g: Set[ScopeType] => A2) = map(this)(g)
@@ -966,10 +992,12 @@ trait Init[ScopeType]:
   private[sbt] final class Uniform[A1, A2](val f: Seq[A1] => A2, val inputs: List[Initialize[A1]])
       extends Initialize[A2]:
     override def dependencies: Seq[ScopedKey[?]] = deps(inputs)
-    override def mapReferenced(g: MapScoped): Initialize[A2] =
-      Uniform(f, inputs.map(_.mapReferenced(g)))
+    private[sbt] override def hasReferenceTo(g: ScopedKey[?] => Boolean): Boolean =
+      inputs.exists(_.hasReferenceTo(g))
+    override def mapReferenced(g: PartialMapScoped): Initialize[A2] =
+      if hasReferenceTo(g.isDefinedAt) then Uniform(f, inputs.map(_.mapReferenced(g))) else this
     override def mapConstant(g: MapConstant): Initialize[A2] =
-      Uniform(f, inputs.map(_.mapConstant(g)))
+      if hasReferenceTo(g(_).isDefined) then Uniform(f, inputs.map(_.mapConstant(g))) else this
     override def apply[A3](g: A2 => A3): Initialize[A3] = Uniform(g.compose(f), inputs)
     override def evaluate(ss: Settings[ScopeType]): A2 = f(inputs.map(_.evaluate(ss)))
 
@@ -990,10 +1018,12 @@ trait Init[ScopeType]:
     import sbt.internal.util.TupleMapExtension.*
 
     override def dependencies: Seq[ScopedKey[?]] = deps(inputs.toList0)
-    override def mapReferenced(g: MapScoped): Initialize[A1] =
-      Apply(f, inputs.transform(mapReferencedK(g)))
+    private[sbt] override def hasReferenceTo(g: ScopedKey[?] => Boolean): Boolean =
+      inputs.iterator.exists(_.hasReferenceTo(g))
+    override def mapReferenced(g: PartialMapScoped): Initialize[A1] =
+      if hasReferenceTo(g.isDefinedAt) then Apply(f, inputs.transform(mapReferencedK(g))) else this
     override def mapConstant(g: MapConstant): Initialize[A1] =
-      Apply(f, inputs.transform(mapConstantK(g)))
+      if hasReferenceTo(g(_).isDefined) then Apply(f, inputs.transform(mapConstantK(g))) else this
 
     override def apply[A2](g: A1 => A2): Initialize[A2] = Apply(g compose f, inputs)
 

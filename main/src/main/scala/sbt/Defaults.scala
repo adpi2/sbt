@@ -4953,7 +4953,7 @@ trait BuildExtra extends BuildCommon with DefExtra {
   def initScoped[T](sk: ScopedKey[?], i: Initialize[T]): Initialize[T] =
     initScope(fillTaskAxis(sk.scope, sk.key), i)
   def initScope[T](s: Scope, i: Initialize[T]): Initialize[T] =
-    i.mapReferenced(Project.mapScope(Scope.replaceThis(s)))
+    i.mapReferenced(Project.mapScope(Scope.partialReplaceThis(s)))
 
   /**
    * Disables post-compilation hook for determining tests for tab-completion (such as for 'test-only').

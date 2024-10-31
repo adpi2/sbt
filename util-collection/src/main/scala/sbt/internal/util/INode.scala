@@ -52,7 +52,7 @@ abstract class EvaluateSettings[ScopeType]:
         case v: ValidationCapture[a] => strictConstant(v.key: A)
         case t: TransformCapture     => strictConstant(t.f: A)
         case o: Optional[s, A] =>
-          o.a match
+          o.input match
             case None    => constant(() => o.f(None))
             case Some(i) => single[s, A](transform(i), x => o.f(Some(x)))
         case StaticScopes => strictConstant(allScopes)
