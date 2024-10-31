@@ -811,9 +811,13 @@ trait Init[ScopeType]:
    */
   sealed trait Keyed[S, A1] extends Initialize[A1]:
     def scopedKey: ScopedKey[S]
-    def transform: S => A1
-
     override final def dependencies = scopedKey :: Nil
+    private[sbt] override def processAttributes[A2](init: A2)(f: (A2, AttributeMap) => A2): A2 =
+      init
+  end Keyed
+
+  final class GetValue[S, A1](val scopedKey: ScopedKey[S], val transform: S => A1)
+      extends Keyed[S, A1]:
     override final def apply[A2](g: A1 => A2): Initialize[A2] =
       GetValue(scopedKey, g compose transform)
     override final def evaluate(ss: Settings[ScopeType]): A1 = transform(getValue(ss, scopedKey))
@@ -829,20 +833,27 @@ trait Init[ScopeType]:
       g(scopedKey) match
         case None        => this
         case Some(const) => Value(() => transform(const))
-
-    private[sbt] override def processAttributes[A2](init: A2)(f: (A2, AttributeMap) => A2): A2 =
-      init
-  end Keyed
-
-  private final class GetValue[S, A1](val scopedKey: ScopedKey[S], val transform: S => A1)
-      extends Keyed[S, A1]
+  end GetValue
 
   /**
    * A `Keyed` where the type of the value and the associated `ScopedKey` are the same.
    * @tparam A1 the type of both the value this `Initialize` defines and the type of the associated `ScopedKey`.
    */
   trait KeyedInitialize[A1] extends Keyed[A1, A1]:
-    final val transform = identity[A1]
+    override final def apply[A2](g: A1 => A2): Initialize[A2] =
+      GetValue(scopedKey, g)
+    override final def evaluate(ss: Settings[ScopeType]): A1 = getValue(ss, scopedKey)
+    override final def mapReferenced(g: MapScoped): Initialize[A1] = g(scopedKey)
+
+    private[sbt] override final def validateKeyReferenced(g: ValidateKeyRef): ValidatedInit[A1] =
+      g(scopedKey, false) match
+        case Left(un)  => Left(un :: Nil)
+        case Right(nk) => Right(nk)
+
+    override final def mapConstant(g: MapConstant): Initialize[A1] =
+      g(scopedKey) match
+        case None        => this
+        case Some(const) => Value(() => const)
   end KeyedInitialize
 
   private[sbt] final class TransformCapture(val f: [x] => Initialize[x] => Initialize[x])

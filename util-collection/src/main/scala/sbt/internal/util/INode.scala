@@ -40,7 +40,10 @@ abstract class EvaluateSettings[ScopeType]:
   private val transform: [A] => Initialize[A] => INode[A] = [A] =>
     (fa: Initialize[A]) =>
       fa match
-        case k: Keyed[s, A]   => single(getStatic(k.scopedKey), k.transform)
+        case g: GetValue[s, A]     => single(getStatic(g.scopedKey), g.transform)
+        case k: KeyedInitialize[A] =>
+          // TODO create a Single node with no transform?
+          single(getStatic(k.scopedKey), identity)
         case u: Uniform[s, A] => UniformNode(u.inputs.map(transform[s]), u.f)
         case a: Apply[k, A] =>
           MixedNode[k, A](TupleMapExtension.transform(a.inputs)(transform), a.f)
