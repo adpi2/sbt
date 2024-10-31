@@ -339,24 +339,24 @@ private[sbt] object Load {
           if key.key == streams.key then
             ScopedKey(Scope.fillTaskAxis(Scope.replaceThis(to.scope)(key.scope), to.key), key.key)
           else key
-    def setDefining[T] =
-      (key: ScopedKey[T], value: T) =>
-        value match {
-          case tk: Task[t]      => setDefinitionKey(tk, key).asInstanceOf[T]
-          case ik: InputTask[t] => ik.mapTask(tk => setDefinitionKey(tk, key)).asInstanceOf[T]
-          case _                => value
+    def setDefining[T](s: Setting[T]): Setting[T] =
+      if s.key.key.tag.isTaskOrInputTask then
+        s.mapInit { (key, value) =>
+          value match {
+            case tk: Task[t]      => setDefinitionKey(tk, key).asInstanceOf[T]
+            case ik: InputTask[t] => ik.mapTask(tk => setDefinitionKey(tk, key)).asInstanceOf[T]
+            case _                => value
+          }
         }
+      else s
+
     def setResolved(defining: ScopedKey[?]): [a] => ScopedKey[a] => Option[a] =
       [a] =>
         (key: ScopedKey[a]) =>
           key.key match
             case resolvedScoped.key => Some(defining.asInstanceOf[a])
             case _                  => None
-    ss.map(s =>
-      s.mapConstant(setResolved(s.key))
-        .mapReferenced(mapSpecial(s.key))
-        .mapInit(setDefining)
-    )
+    ss.map(s => setDefining(s.mapConstant(setResolved(s.key)).mapReferenced(mapSpecial(s.key))))
   }
 
   def setDefinitionKey[T](tk: Task[T], key: ScopedKey[?]): Task[T] =
