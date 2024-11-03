@@ -102,13 +102,13 @@ private[sbt] object WatchTransitiveDependencies {
   private[sbt] def transitiveDynamicInputs(args: Arguments): Seq[DynamicInput] = {
     import args._
     val taskScope = Project.fillTaskAxis(scopedKey).scope
-    def delegates(sk: ScopedKey[?]): Seq[ScopedKey[?]] =
-      Project.delegates(structure, sk.scope, sk.key)
     // We add the triggers to the delegate scopes to make it possible for the user to do something
     // like: Compile / compile / watchTriggers += baseDirectory.value ** "*.proto". We do not do the
     // same for inputs because inputs are expected to be explicitly used as part of the task.
     val allKeys: Seq[ScopedKey[?]] =
-      (delegates(scopedKey).toSet ++ delegates(ScopedKey(taskScope, watchTriggers.key))).toSeq
+      (structure.delegates(scopedKey).toSet ++ structure.delegates(
+        ScopedKey(taskScope, watchTriggers.key)
+      )).toSeq
     val keys = collectKeys(args, allKeys, Set.empty, Set.empty)
     def getDynamicInputs(scopedKey: ScopedKey[Seq[Glob]], trigger: Boolean): Seq[DynamicInput] = {
       data

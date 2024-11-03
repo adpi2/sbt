@@ -67,7 +67,7 @@ class EvaluateSettings[I <: Init](
   private val running = new AtomicInteger
   private val cancel = new AtomicBoolean(false)
 
-  def run(implicit delegates: ScopeType => Seq[ScopeType]): Settings = {
+  def run(implicit delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]]): Settings = {
     assert(running.get() == 0, "Already running")
     startWork()
     roots.foreach(_.registerIfNew())
@@ -79,7 +79,7 @@ class EvaluateSettings[I <: Init](
     getResults(delegates)
   }
 
-  private def getResults(implicit delegates: ScopeType => Seq[ScopeType]) =
+  private def getResults(implicit delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]]) =
     static.toTypedSeq.foldLeft(empty) { case (ss, static.TPair(key, node)) =>
       if key.key.isLocal then ss
       else ss.set(key, node.get)

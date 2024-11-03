@@ -32,7 +32,7 @@ final class BuildStructure(
     val data: Def.Settings,
     val index: StructureIndex,
     val streams: State => Streams,
-    val delegates: Scope => Seq[Scope],
+    val delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]],
     val scopeLocal: ScopeLocal,
     private[sbt] val compiledMap: Map[ScopedKey[?], Def.Compiled[?]],
     private[sbt] val converter: MappedFileConverter,

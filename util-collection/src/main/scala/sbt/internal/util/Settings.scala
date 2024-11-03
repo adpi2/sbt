@@ -159,9 +159,8 @@ trait Init:
   private final val nextID = new java.util.concurrent.atomic.AtomicLong
   private final def nextDefaultID(): Long = nextID.incrementAndGet()
 
-  def empty(implicit delegates: ScopeType => Seq[ScopeType]): Settings =
-    val d = (key: ScopedKey[?]) => delegates(key.scope).map(s => key.copy(scope = s))
-    Settings0(Set.empty, Set.empty, Map.empty, d)
+  def empty(implicit delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]]): Settings =
+    Settings0(Set.empty, Set.empty, Map.empty, delegates)
 
   def asTransform(s: Settings): [A] => ScopedKey[A] => A =
     [A] => (sk: ScopedKey[A]) => getValue(s, sk)
@@ -186,7 +185,7 @@ trait Init:
   }
 
   def compiled(init: Seq[Setting[?]], actual: Boolean = true)(using
-      delegates: ScopeType => Seq[ScopeType],
+      delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]],
       scopeLocal: ScopeLocal,
       display: Show[ScopedKey[?]]
   ): CompiledMap = {
@@ -203,15 +202,8 @@ trait Init:
     compile(dMap)
   }
 
-  @deprecated("Use makeWithCompiledMap", "1.4.0")
-  def make(init: Seq[Setting[?]])(using
-      delegates: ScopeType => Seq[ScopeType],
-      scopeLocal: ScopeLocal,
-      display: Show[ScopedKey[?]]
-  ): Settings = makeWithCompiledMap(init)._2
-
   def makeWithCompiledMap(init: Seq[Setting[?]])(using
-      delegates: ScopeType => Seq[ScopeType],
+      delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]],
       scopeLocal: ScopeLocal,
       display: Show[ScopedKey[?]]
   ): (CompiledMap, Settings) =
@@ -271,12 +263,12 @@ trait Init:
     Par(init).map(_.dependencies flatMap scopeLocal).toVector.flatten ++ init
 
   def delegate(sMap: ScopedMap)(implicit
-      delegates: ScopeType => Seq[ScopeType],
+      delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]],
       display: Show[ScopedKey[?]]
   ): ScopedMap = {
     def refMap(ref: Setting[?], isFirst: Boolean) = new ValidateKeyRef {
       def apply[T](k: ScopedKey[T], selfRefOk: Boolean) =
-        delegateForKey(sMap, k, delegates(k.scope), ref, selfRefOk || !isFirst)
+        delegateForKey(sMap, k, delegates(k), ref, selfRefOk || !isFirst)
     }
 
     val undefined = new java.util.ArrayList[Undefined]
@@ -311,16 +303,15 @@ trait Init:
   private def delegateForKey[A1](
       sMap: ScopedMap,
       k: ScopedKey[A1],
-      scopes: Seq[ScopeType],
+      sKeys: Seq[ScopedKey[A1]],
       ref: Setting[?],
       selfRefOk: Boolean
   ): Either[Undefined, ScopedKey[A1]] =
-    val skeys = scopes.iterator.map(x => ScopedKey(x, k.key))
-    val definedAt = skeys.find(sk => (selfRefOk || ref.key != sk) && (sMap.contains(sk)))
+    val definedAt = sKeys.find(sk => (selfRefOk || ref.key != sk) && (sMap.contains(sk)))
     definedAt.toRight(Undefined(ref, k))
 
   private def applyInits(ordered: Seq[Compiled[?]])(implicit
-      delegates: ScopeType => Seq[ScopeType]
+      delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]]
   ): Settings =
     val x =
       java.util.concurrent.Executors.newFixedThreadPool(Runtime.getRuntime.availableProcessors)
@@ -334,7 +325,7 @@ trait Init:
   def showUndefined(
       u: Undefined,
       validKeys: Seq[ScopedKey[?]],
-      delegates: ScopeType => Seq[ScopeType]
+      delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]]
   )(implicit
       display: Show[ScopedKey[?]]
   ): String =
@@ -358,7 +349,7 @@ trait Init:
 
   def guessIntendedScope(
       validKeys: Seq[ScopedKey[?]],
-      delegates: ScopeType => Seq[ScopeType],
+      delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]],
       key: ScopedKey[?]
   ): Option[ScopedKey[?]] =
     val distances = validKeys.flatMap { validKey =>
@@ -367,13 +358,14 @@ trait Init:
     distances.sortBy(_._1).map(_._2).headOption
 
   def refinedDistance(
-      delegates: ScopeType => Seq[ScopeType],
+      delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]],
       a: ScopedKey[?],
       b: ScopedKey[?]
   ): Option[Int] =
     if a.key != b.key || a == b then None
     else {
-      val dist = delegates(a.scope).indexOf(b.scope)
+      // TODO can I use indexOf(b) instead?
+      val dist = delegates(a).indexWhere(a => a.scope == b.scope)
       if dist < 0 then None
       else Some(dist)
     }
@@ -383,7 +375,7 @@ trait Init:
 
   def Uninitialized(
       validKeys: Seq[ScopedKey[?]],
-      delegates: ScopeType => Seq[ScopeType],
+      delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]],
       keys: Seq[Undefined],
       runtime: Boolean
   )(implicit display: Show[ScopedKey[?]]): Uninitialized = {
@@ -468,43 +460,36 @@ trait Init:
     def exists(f: ScopeType => Boolean): Boolean
   end Delegates
 
-  private def mkDelegates(delegates: ScopeType => Seq[ScopeType]): ScopeType => Delegates = {
-    val delegateMap = new java.util.concurrent.ConcurrentHashMap[ScopeType, Delegates]
-    s =>
-      delegateMap.get(s) match {
-        case null =>
-          val seq = delegates(s)
-          val set = seq.toSet
-          val d = new Delegates {
-            override def contains(s: ScopeType): Boolean = set.contains(s)
-            override def exists(f: ScopeType => Boolean): Boolean = seq.exists(f)
-          }
-          delegateMap.put(s, d)
-          d
-        case d => d
-      }
+  private def mkDelegates(
+      delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]]
+  ): ScopedKey[?] => Delegates = { s =>
+    val set = delegates(s).map(_.scope).toSet
+    new Delegates {
+      override def contains(s: ScopeType): Boolean = set.contains(s)
+      override def exists(f: ScopeType => Boolean): Boolean = set.exists(f)
+    }
   }
 
   /**
    * Intersects two scopes, returning the more specific one if they intersect, or None otherwise.
    */
-  private[sbt] def intersect(s1: ScopeType, s2: ScopeType)(implicit
-      delegates: ScopeType => Seq[ScopeType]
-  ): Option[ScopeType] = intersectDelegates(s1, s2, mkDelegates(delegates))
+  private[sbt] def intersect(s1: ScopedKey[?], s2: ScopedKey[?])(implicit
+      delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]]
+  ): Option[ScopedKey[?]] = intersectDelegates(s1, s2, mkDelegates(delegates))
 
   /**
    * Intersects two scopes, returning the more specific one if they intersect, or None otherwise.
    */
   private def intersectDelegates(
-      s1: ScopeType,
-      s2: ScopeType,
-      delegates: ScopeType => Delegates
-  ): Option[ScopeType] =
-    if (delegates(s1).contains(s2)) Some(s1) // s1 is more specific
-    else if (delegates(s2).contains(s1)) Some(s2) // s2 is more specific
+      s1: ScopedKey[?],
+      s2: ScopedKey[?],
+      delegates: ScopedKey[?] => Delegates
+  ): Option[ScopedKey[?]] =
+    if (delegates(s1).contains(s2.scope)) Some(s1) // s1 is more specific
+    else if (delegates(s2).contains(s1.scope)) Some(s2) // s2 is more specific
     else None
 
-  private def deriveAndLocal(init: Seq[Setting[?]], delegates: ScopeType => Delegates)(implicit
+  private def deriveAndLocal(init: Seq[Setting[?]], delegates: ScopedKey[?] => Delegates)(implicit
       scopeLocal: ScopeLocal
   ): Seq[Setting[?]] = {
     import collection.mutable
@@ -554,12 +539,12 @@ trait Init:
     addDefs(defs)
 
     // true iff the scoped key is in `defined`, taking delegation into account
-    def isDefined(key: AttributeKey[?], scope: ScopeType) =
-      delegates(scope).exists(s => defined.contains(ScopedKey(s, key)))
+    def isDefined(key: ScopedKey[?]) =
+      delegates(key).exists(s => defined.contains(ScopedKey(s, key.key)))
 
     // true iff all dependencies of derived setting `d` have a value (potentially via delegation) in `scope`
     def allDepsDefined(d: Derived, scope: ScopeType, local: Set[AttributeKey[?]]): Boolean =
-      d.dependencies.forall(dep => local(dep) || isDefined(dep, scope))
+      d.dependencies.forall(dep => local(dep) || isDefined(ScopedKey(scope, dep)))
 
     // Returns the list of injectable derived settings and their local settings for `sk`.
     // The settings are to be injected under `outputScope` = whichever scope is more specific of:
@@ -573,16 +558,15 @@ trait Init:
     // This needs to handle local settings because a derived setting wouldn't be injected if it's local setting didn't exist yet.
     val deriveFor = (sk: ScopedKey[?]) => {
       val derivedForKey: List[Derived] = derivedBy.get(sk.key).toList.flatten
-      val scope = sk.scope
       def localAndDerived(d: Derived): Seq[Setting[?]] = {
         def definingScope = d.setting.key.scope
-        val outputScope = intersectDelegates(scope, definingScope, delegates)
-        outputScope collect {
-          case s if !d.inScopes.contains(s) && d.setting.filter(s) =>
-            val local = d.dependencies.flatMap(dep => scopeLocal(ScopedKey(s, dep)))
-            if (allDepsDefined(d, s, local.map(_.key.key).toSet)) {
-              d.inScopes.add(s)
-              val out = local :+ d.setting.setScope(s)
+        val outputKey = intersectDelegates(sk, d.setting.key, delegates)
+        outputKey.collect {
+          case s if !d.inScopes.contains(s.scope) && d.setting.filter(s.scope) =>
+            val local = d.dependencies.flatMap(dep => scopeLocal(ScopedKey(s.scope, dep)))
+            if (allDepsDefined(d, s.scope, local.map(_.key.key).toSet)) {
+              d.inScopes.add(s.scope)
+              val out = local :+ d.setting.setScope(s.scope)
               d.outputs ++= out
               out
             } else nilSeq

@@ -27,12 +27,16 @@ case class SettingsExample() extends Init {
   })
 
   // A sample delegation function that delegates to a Scope with a lower index.
-  val delegates: Scope => Seq[Scope] = { case s @ Scope(index, proj) =>
-    s +: (if (index <= 0) Nil
-          else {
-            (if (proj > 0) List(Scope(index)) else Nil) ++: delegates(Scope(index - 1))
-          })
-  }
+  val delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]] = [a] =>
+    (s: ScopedKey[a]) =>
+      val index = s.scope.nestIndex
+      val proj = s.scope.idAtIndex
+      s +: (
+        if index <= 0 then Nil
+        else
+          (if proj > 0 then List(s.copy(scope = Scope(index))) else Nil) ++:
+            delegates(s.copy(scope = Scope(index - 1)))
+    )
 
   // Not using this feature in this example.
   val scopeLocal: ScopeLocal = _ => Nil

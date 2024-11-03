@@ -364,13 +364,6 @@ trait ProjectExtra extends Scoped.Syntax:
     private[sbt] def equalKeys(a: ScopedKey[?], b: ScopedKey[?], mask: ScopeMask): Boolean =
       a.key == b.key && Scope.equal(a.scope, b.scope, mask)
 
-    def delegates(
-        structure: BuildStructure,
-        scope: Scope,
-        key: AttributeKey[?]
-    ): Seq[ScopedKey[?]] =
-      structure.delegates(scope).map(d => ScopedKey(d, key))
-
     private[sbt] def scopedKeyData(
         structure: BuildStructure,
         key: ScopedKey[?]
@@ -448,7 +441,7 @@ trait ProjectExtra extends Scoped.Syntax:
         definedAt +
         printDepScopes("Dependencies", "derived from", depends, derivedDepends) +
         printDepScopes("Reverse dependencies", "derives", reverse, derivedReverse) +
-        printScopes("Delegates", delegates(structure, key.scope, key.key)) +
+        printScopes("Delegates", structure.delegates(key)) +
         printScopes("Related", related, 10)
     }
 
@@ -485,7 +478,7 @@ trait ProjectExtra extends Scoped.Syntax:
       )
 
     private[sbt] def relation(settings: Seq[Def.Setting[?]], actual: Boolean)(using
-        delegates: Scope => Seq[Scope],
+        delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]],
         scopeLocal: Def.ScopeLocal,
         display: Show[ScopedKey[?]]
     ): Relation[ScopedKey[?], ScopedKey[?]] =

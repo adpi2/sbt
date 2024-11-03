@@ -276,7 +276,8 @@ private[sbt] object Load {
     val delegates = timed("Load.apply: config.delegates", log) {
       // We use caching to avoid creating new Scope instances too many times
       // Creating a new Scope is CPU expensive because of the uniqueness cache
-      Util.withCaching(config.delegates(loaded))
+      val f: Scope => Seq[Scope] = Util.withCaching(config.delegates(loaded))
+      ([a] => (k: ScopedKey[a]) => f(k.scope).map(s => k.copy(scope = s)))
     }
     val (cMap, data) = timed("Load.apply: Def.make(settings)...", log) {
       // When settings.size is 100000, Def.make takes around 10s.

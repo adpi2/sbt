@@ -12,7 +12,7 @@ import java.net.URI
 import scala.annotation.tailrec
 import scala.annotation.targetName
 import sbt.KeyRanks.{ DTask, Invisible }
-import sbt.Scope.{ GlobalScope, ThisScope }
+import sbt.Scope.ThisScope
 import sbt.internal.util.Types.const
 import sbt.internal.util.complete.Parser
 import sbt.internal.util.{ Terminal => ITerminal, * }
@@ -222,13 +222,6 @@ object Def extends BuildSyntax with Init with InitializeImplicits:
         .map(k =>
           s"Scope cannot be defined for dependency ${k.key.label} of ${definedSettingString(s)}"
         )
-
-  override def intersect(s1: Scope, s2: Scope)(implicit
-      delegates: Scope => Seq[Scope]
-  ): Option[Scope] =
-    if (s2 == GlobalScope) Some(s1) // s1 is more specific
-    else if (s1 == GlobalScope) Some(s2) // s2 is more specific
-    else super.intersect(s1, s2)
 
   private def definedSettingString(s: Setting[?]): String =
     s"derived setting ${s.key.key.label}${positionString(s)}"
