@@ -20,7 +20,7 @@ import sbt.SlashSyntax0.given
 import BuildStreams.Streams
 import sbt.io.syntax._
 import sbt.internal.inc.MappedFileConverter
-import sbt.internal.util.{ AttributeEntry, AttributeKey, AttributeMap, Attributed, Settings }
+import sbt.internal.util.{ AttributeEntry, AttributeKey, AttributeMap, Attributed }
 import sbt.internal.util.Attributed.data
 import sbt.util.Logger
 import xsbti.FileConverter
@@ -29,7 +29,7 @@ final class BuildStructure(
     val units: Map[URI, LoadedBuildUnit],
     val root: URI,
     val settings: Seq[Setting[?]],
-    val data: Settings[Scope],
+    val data: Def.Settings,
     val index: StructureIndex,
     val streams: State => Streams,
     val delegates: Scope => Seq[Scope],
@@ -271,7 +271,7 @@ final class LoadedBuild(val root: URI, val units: Map[URI, LoadedBuildUnit]) {
       unit.projects.map(p => ProjectRef(build, p.id) -> p)
     }.toIndexedSeq
 
-  def extra(data: Settings[Scope])(keyIndex: KeyIndex): BuildUtil[ResolvedProject] =
+  def extra(data: Def.Settings)(keyIndex: KeyIndex): BuildUtil[ResolvedProject] =
     BuildUtil(root, units, keyIndex, data)
 
   private[sbt] def autos = GroupedAutoPlugins(units)
@@ -309,7 +309,7 @@ object BuildStreams {
   def mkStreams(
       units: Map[URI, LoadedBuildUnit],
       root: URI,
-      data: Settings[Scope]
+      data: Def.Settings
   ): State => Streams = s => {
     s.get(Keys.stateStreams).getOrElse {
       std.Streams(
@@ -324,7 +324,7 @@ object BuildStreams {
     }
   }
 
-  def path(units: Map[URI, LoadedBuildUnit], root: URI, data: Settings[Scope])(
+  def path(units: Map[URI, LoadedBuildUnit], root: URI, data: Def.Settings)(
       scoped: ScopedKey[?]
   ): File =
     resolvePath(projectPath(units, root, scoped, data), nonProjectPath(scoped))
@@ -386,7 +386,7 @@ object BuildStreams {
       units: Map[URI, LoadedBuildUnit],
       root: URI,
       scoped: ScopedKey[?],
-      data: Settings[Scope]
+      data: Def.Settings
   ): File =
     scoped.scope.project match {
       case Zero => refTarget(GlobalScope, units(root).localBase, data) / GlobalPath
@@ -397,9 +397,9 @@ object BuildStreams {
       case This => sys.error("Unresolved project reference (This) in " + displayFull(scoped))
     }
 
-  def refTarget(ref: ResolvedReference, fallbackBase: File, data: Settings[Scope]): File =
+  def refTarget(ref: ResolvedReference, fallbackBase: File, data: Def.Settings): File =
     refTarget(GlobalScope.copy(project = Select(ref)), fallbackBase, data)
 
-  def refTarget(scope: Scope, fallbackBase: File, data: Settings[Scope]): File =
+  def refTarget(scope: Scope, fallbackBase: File, data: Def.Settings): File =
     ((scope / Keys.target).get(data) getOrElse outputDirectory(fallbackBase)) / StreamsDirectory
 }

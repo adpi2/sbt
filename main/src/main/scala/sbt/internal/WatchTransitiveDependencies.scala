@@ -16,7 +16,6 @@ import sbt.ProjectExtra.*
 import sbt.SlashSyntax0.given
 import sbt.internal.io.Source
 import sbt.internal.nio.Globs
-import sbt.internal.util.AttributeMap
 import sbt.internal.util.complete.Parser
 import sbt.nio.FileStamper
 import sbt.nio.Keys._
@@ -54,7 +53,7 @@ private[sbt] object WatchTransitiveDependencies {
       val state: State
   ) {
     def structure: BuildStructure = extracted.structure
-    def data: Map[Scope, AttributeMap] = extracted.structure.data.data
+    def data: Settings = extracted.structure.data
   }
 
   private def argumentsImpl(
@@ -113,18 +112,18 @@ private[sbt] object WatchTransitiveDependencies {
     val keys = collectKeys(args, allKeys, Set.empty, Set.empty)
     def getDynamicInputs(scopedKey: ScopedKey[Seq[Glob]], trigger: Boolean): Seq[DynamicInput] = {
       data
-        .get(scopedKey.scope)
-        .map { am =>
-          am.get(scopedKey.key) match {
-            case Some(globs: Seq[Glob]) =>
-              if (!trigger) {
-                val stamper = am.get(inputFileStamper.key).getOrElse(FileStamper.Hash)
-                val forceTrigger = am.get(watchForceTriggerOnAnyChange.key).getOrElse(false)
-                globs.map(g => DynamicInput(g, stamper, forceTrigger))
-              } else {
-                globs.map(g => DynamicInput(g, FileStamper.LastModified, forceTrigger = true))
-              }
-            case None => Nil: Seq[DynamicInput]
+        .getDirect(scopedKey)
+        .map { globs =>
+          if (!trigger) {
+            val stamper =
+              data.getDirect(scopedKey.copy(key = inputFileStamper.key)).getOrElse(FileStamper.Hash)
+            val forceTrigger =
+              data
+                .getDirect(scopedKey.copy(key = watchForceTriggerOnAnyChange.key))
+                .getOrElse(false)
+            globs.map(g => DynamicInput(g, stamper, forceTrigger))
+          } else {
+            globs.map(g => DynamicInput(g, FileStamper.LastModified, forceTrigger = true))
           }
         }
         .getOrElse(Nil)
@@ -148,21 +147,15 @@ private[sbt] object WatchTransitiveDependencies {
         .toIndexedSeq
     val projects = projectScopes.flatMap(_.project.toOption).distinct.toSet
     val scopes: Seq[Either[Scope, Seq[Glob]]] =
-      data.flatMap { case (s, am) =>
-        if (s == Scope.Global || s.project.toOption.exists(projects.contains))
-          am.get(Keys.watchSources.key) match {
-            case Some(k) =>
-              k.work match {
-                // Avoid extracted.runTask if possible.
-                case Action.Pure(w, _) => Some(Right(w().map(_.toGlob)))
-                case _                 => Some(Left(s))
-              }
-            case _ => None
+      data.scopes.toSeq
+        .filter(s => s == Scope.Global || s.project.toOption.exists(projects.contains))
+        .flatMap { s =>
+          data.getDirect(ScopedKey(s, Keys.watchSources.key)).map { task =>
+            task.work match
+              case a: Action.Pure[Seq[Watched.WatchSource]] => Right(a.f().map(_.toGlob))
+              case _                                        => Left(s)
           }
-        else {
-          None
         }
-      }.toSeq
     def toDynamicInput(glob: Glob): DynamicInput =
       DynamicInput(glob, FileStamper.LastModified, forceTrigger = true)
     scopes.flatMap {

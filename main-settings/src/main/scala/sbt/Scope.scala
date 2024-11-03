@@ -100,6 +100,8 @@ object Scope:
       case _            => scope.copy(task = Select(key))
     }
 
+  def fillTaskAxis(key: AttributeKey[?]): Scope => Scope = fillTaskAxis(_, key)
+
   def mapReference(f: Reference => Reference): Scope => Scope = {
     case Scope(Select(ref), a, b, c) => Scope(Select(f(ref)), a, b, c)
     case x                           => x

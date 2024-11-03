@@ -54,7 +54,8 @@ trait BuildSyntax:
 end BuildSyntax
 
 /** A concrete settings system that uses `sbt.Scope` for the scope type. */
-object Def extends BuildSyntax with Init[Scope] with InitializeImplicits:
+object Def extends BuildSyntax with Init with InitializeImplicits:
+  type ScopeType = Scope
   type Classpath = Seq[Attributed[HashedVirtualFileRef]]
 
   def settings(ss: SettingsDefinition*): Seq[Setting[?]] = ss.flatMap(_.settings)

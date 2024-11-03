@@ -19,7 +19,8 @@ final case class Scope(nestIndex: Int, idAtIndex: Int = 0)
 //  Lots of type constructors would become binary, which as you may know requires lots of type lambdas
 //  when you want a type function with only one parameter.
 //  That would be a general pain.)
-case class SettingsExample() extends Init[Scope] {
+case class SettingsExample() extends Init {
+  type ScopeType = Scope
   // Provides a way of showing a Scope+AttributeKey[_]
   val showFullKey: Show[ScopedKey[?]] = Show[ScopedKey[?]]((key: ScopedKey[?]) => {
     s"${key.scope.nestIndex}(${key.scope.idAtIndex})/${key.key.label}"
@@ -64,7 +65,7 @@ case class SettingsUsage(val settingsExample: SettingsExample) {
   // "compiles" and applies the settings.
   //  This can be split into multiple steps to access intermediate results if desired.
   //  The 'inspect' command operates on the output of 'compile', for example.
-  val applied: Settings[Scope] =
+  val applied: Settings =
     makeWithCompiledMap(mySettings)(using delegates, scopeLocal, showFullKey)._2
 
   // Show results.

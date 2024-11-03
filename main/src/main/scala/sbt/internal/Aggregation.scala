@@ -11,7 +11,7 @@ package internal
 
 import java.text.DateFormat
 
-import sbt.Def.ScopedKey
+import sbt.Def.{ ScopedKey, Settings }
 import sbt.Keys.{ showSuccess, showTiming, timingFormat }
 import sbt.ProjectExtra.*
 import sbt.SlashSyntax0.given
@@ -157,7 +157,7 @@ object Aggregation {
   private def timingString(
       startTime: Long,
       endTime: Long,
-      data: Settings[Scope],
+      data: Settings,
       currentRef: ProjectRef,
   ): String = {
     val format = (currentRef / timingFormat).get(data) getOrElse defaultFormat
@@ -301,7 +301,7 @@ object Aggregation {
       ScopedKey(resolved, key.key)
     }
 
-  def aggregationEnabled(key: ScopedKey[?], data: Settings[Scope]): Boolean =
+  def aggregationEnabled(key: ScopedKey[?], data: Settings): Boolean =
     (Scope.fillTaskAxis(key.scope, key.key) / Keys.aggregate).get(data).getOrElse(true)
   private[sbt] val suppressShow =
     AttributeKey[Boolean]("suppress-aggregation-show", Int.MaxValue)

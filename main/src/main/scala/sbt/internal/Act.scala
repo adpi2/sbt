@@ -24,7 +24,6 @@ import sbt.internal.util.{
   AttributeMap,
   IMap,
   MessageOnlyException,
-  Settings,
   Util,
 }
 import sbt.util.Show
@@ -61,7 +60,7 @@ object Act {
       current: ProjectRef,
       defaultConfigs: Option[ResolvedReference] => Seq[String],
       keyMap: Map[String, AttributeKey[?]],
-      data: Settings[Scope]
+      data: Def.Settings
   ): Parser[ScopedKey[Any]] =
     scopedKeySelected(index, current, defaultConfigs, keyMap, data, askProject = true)
       .map(_.key.asInstanceOf[ScopedKey[Any]])
@@ -115,7 +114,7 @@ object Act {
       current: ProjectRef,
       defaultConfigs: Option[ResolvedReference] => Seq[String],
       keyMap: Map[String, AttributeKey[?]],
-      data: Settings[Scope],
+      data: Def.Settings,
       askProject: Boolean,
   ): Parser[ParsedKey] =
     scopedKeyFull(index, current, defaultConfigs, keyMap, askProject = askProject).flatMap {
@@ -197,7 +196,7 @@ object Act {
       key
     )
 
-  def select(allKeys: Seq[Parser[ParsedKey]], data: Settings[Scope])(implicit
+  def select(allKeys: Seq[Parser[ParsedKey]], data: Def.Settings)(implicit
       show: Show[ScopedKey[?]]
   ): Parser[ParsedKey] =
     seq(allKeys) flatMap { ss =>
@@ -235,10 +234,7 @@ object Act {
   def showAmbiguous(keys: Seq[ScopedKey[?]])(implicit show: Show[ScopedKey[?]]): String =
     keys.take(3).map(x => show.show(x)).mkString("", ", ", if (keys.size > 3) ", ..." else "")
 
-  def isValid(data: Settings[Scope])(parsed: ParsedKey): Boolean = {
-    val key = parsed.key
-    data.definingScope(key.scope, key.key) == Some(key.scope)
-  }
+  def isValid(data: Def.Settings)(parsed: ParsedKey): Boolean = data.contains(parsed.key)
 
   def examples(p: Parser[String], exs: Set[String], label: String): Parser[String] =
     (p !!! ("Expected " + label)).examples(exs)
@@ -571,28 +567,14 @@ object Act {
   def keyValues[T](extracted: Extracted)(keys: Seq[ScopedKey[T]]): Values[T] =
     keyValues(extracted.structure)(keys)
   def keyValues[T](structure: BuildStructure)(keys: Seq[ScopedKey[T]]): Values[T] =
-    keys.flatMap { key =>
-      getValue(structure.data, key.scope, key.key) map { value =>
-        KeyValue(key, value)
-      }
-    }
-  private def anyKeyValues(
-      structure: BuildStructure,
-      keys: Seq[ScopedKey[?]]
-  ): Seq[KeyValue[?]] =
-    keys.flatMap { key =>
-      getValue(structure.data, key.scope, key.key) map { value =>
-        KeyValue(key, value)
-      }
-    }
+    keys.flatMap(key => getValue(structure.data, key).map(KeyValue(key, _)))
 
-  private def getValue[T](
-      data: Settings[Scope],
-      scope: Scope,
-      key: AttributeKey[T]
-  ): Option[T] =
-    if (java.lang.Boolean.getBoolean("sbt.cli.nodelegation")) data.getDirect(scope, key)
-    else data.get(scope, key)
+  private def anyKeyValues(structure: BuildStructure, keys: Seq[ScopedKey[?]]): Seq[KeyValue[?]] =
+    keys.flatMap(key => getValue(structure.data, key).map(KeyValue(key, _)))
+
+  private def getValue[T](data: Def.Settings, key: ScopedKey[T]): Option[T] =
+    if (java.lang.Boolean.getBoolean("sbt.cli.nodelegation")) data.getDirect(key)
+    else data.get(key)
 
   def requireSession[T](s: State, p: => Parser[T]): Parser[T] =
     if s.get(sessionSettings).isEmpty then failure("No project loaded") else p

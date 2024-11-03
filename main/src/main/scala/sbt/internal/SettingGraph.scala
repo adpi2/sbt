@@ -25,11 +25,7 @@ object SettingGraph {
       compiled(structure.settings, false)(using structure.delegates, structure.scopeLocal, display)
     )
     def loop(scoped: ScopedKey[?], generation: Int): SettingGraph = {
-      val key = scoped.key
-      val scope = scoped.scope
-      val definedIn = structure.data.definingScope(scope, key) map { sc =>
-        display.show(ScopedKey(sc, key))
-      }
+      val definedIn = structure.data.definingKey(scoped).map(display.show)
       val depends = cMap.get(scoped) match {
         case Some(c) => c.dependencies.toSet; case None => Set.empty
       }
@@ -39,8 +35,8 @@ object SettingGraph {
       SettingGraph(
         display.show(scoped),
         definedIn,
-        Project.scopedKeyData(structure, scope, key),
-        key.description,
+        Project.scopedKeyData(structure, scoped),
+        scoped.key.description,
         basedir,
         depends map { (x: ScopedKey[?]) =>
           loop(x, generation + 1)

@@ -9,7 +9,7 @@
 package sbt
 package internal
 
-import sbt.internal.util.{ AttributeKey, complete, Relation, Settings, Util }
+import sbt.internal.util.{ AttributeKey, complete, Relation, Util }
 import sbt.util.Show
 import sbt.librarymanagement.Configuration
 
@@ -138,7 +138,7 @@ private[sbt] object SettingCompletions {
    * The last part of the completion will generate a template for the value or function literal that will initialize the setting or task.
    */
   def settingParser(
-      settings: Settings[Scope],
+      settings: Def.Settings,
       rawKeyMap: Map[String, AttributeKey[?]],
       context: ResolvedProject,
   ): Parser[String] = {
@@ -156,7 +156,7 @@ private[sbt] object SettingCompletions {
   /** Parser for a Scope+AttributeKey (ScopedKey). */
   def scopedKeyParser(
       keyMap: Map[String, AttributeKey[?]],
-      settings: Settings[Scope],
+      settings: Def.Settings,
       context: ResolvedProject
   ): Parser[ScopedKey[?]] = {
     val cutoff = KeyRanks.MainCutoff
@@ -195,15 +195,11 @@ private[sbt] object SettingCompletions {
    */
   def scopeParser(
       key: AttributeKey[?],
-      settings: Settings[Scope],
+      settings: Def.Settings,
       context: ResolvedProject
   ): Parser[Scope] = {
-    val data = settings.data
-    val allScopes = data.keys.toSeq
-    val definedScopes = data.toSeq flatMap { case (scope, attrs) =>
-      if attrs.contains(key) then scope :: Nil else Nil
-    }
-    scope(allScopes, definedScopes, context)
+    val definedScopes = settings.keys.collect { case sk if sk.key == key => sk.scope }
+    scope(settings.scopes.toSeq, definedScopes.toSeq, context)
   }
 
   private def scope(

@@ -15,7 +15,7 @@ import sbt.Keys._
 import sbt.nio.Keys._
 import sbt.nio.file.{ Glob, RecursiveGlob }
 import sbt.Def.Initialize
-import sbt.internal.util.{ Attributed, Dag, Settings }
+import sbt.internal.util.{ Attributed, Dag }
 import sbt.librarymanagement.{ Configuration, TrackLevel }
 import sbt.librarymanagement.Configurations.names
 import sbt.std.TaskExtra._
@@ -180,7 +180,7 @@ private[sbt] object ClasspathImpl {
       projectRef: ProjectRef,
       conf: Configuration,
       self: Configuration,
-      data: Settings[Scope],
+      data: Def.Settings,
       deps: BuildDependencies,
       track: TrackLevel,
       log: Logger
@@ -198,7 +198,7 @@ private[sbt] object ClasspathImpl {
         projectRef: ProjectRef,
         conf: Configuration,
         self: Configuration,
-        data: Settings[Scope],
+        data: Def.Settings,
         deps: BuildDependencies,
         track: TrackLevel,
         log: Logger
@@ -244,7 +244,7 @@ private[sbt] object ClasspathImpl {
       projectRef: ProjectRef,
       conf: Configuration,
       self: Configuration,
-      data: Settings[Scope],
+      data: Def.Settings,
       deps: BuildDependencies,
       track: TrackLevel,
       log: Logger
@@ -282,7 +282,7 @@ private[sbt] object ClasspathImpl {
   def unmanagedDependencies0(
       projectRef: ProjectRef,
       conf: Configuration,
-      data: Settings[Scope],
+      data: Def.Settings,
       deps: BuildDependencies,
       log: Logger
   ): Initialize[Task[Classpath]] =
@@ -306,7 +306,7 @@ private[sbt] object ClasspathImpl {
   def unmanagedLibs(
       dep: ResolvedReference,
       conf: String,
-      data: Settings[Scope]
+      data: Def.Settings
   ): Task[Classpath] =
     getClasspath(unmanagedJars, dep, conf, data)
 
@@ -315,7 +315,7 @@ private[sbt] object ClasspathImpl {
       deps: BuildDependencies,
       conf: Configuration,
       self: Configuration,
-      data: Settings[Scope],
+      data: Def.Settings,
       track: TrackLevel,
       includeSelf: Boolean,
       log: Logger
@@ -346,7 +346,7 @@ private[sbt] object ClasspathImpl {
   def interSort(
       projectRef: ProjectRef,
       conf: Configuration,
-      data: Settings[Scope],
+      data: Def.Settings,
       deps: BuildDependencies
   ): Seq[(ProjectRef, String)] =
     val visited = (new LinkedHashSet[(ProjectRef, String)]).asScala
@@ -431,7 +431,7 @@ private[sbt] object ClasspathImpl {
   def allConfigs(conf: Configuration): Seq[Configuration] =
     Dag.topologicalSort(conf)(_.extendsConfigs)
 
-  def getConfigurations(p: ResolvedReference, data: Settings[Scope]): Seq[Configuration] =
+  def getConfigurations(p: ResolvedReference, data: Def.Settings): Seq[Configuration] =
     (p / ivyConfigurations).get(data).getOrElse(Nil)
 
   def confOpt(configurations: Seq[Configuration], conf: String): Option[Configuration] =
@@ -441,14 +441,14 @@ private[sbt] object ClasspathImpl {
       key: TaskKey[Seq[A]],
       dep: ResolvedReference,
       conf: Configuration,
-      data: Settings[Scope]
+      data: Def.Settings
   ): Task[Seq[A]] = getClasspath(key, dep, conf.name, data)
 
   def getClasspath[A](
       key: TaskKey[Seq[A]],
       dep: ResolvedReference,
       conf: String,
-      data: Settings[Scope]
+      data: Def.Settings
   ): Task[Seq[A]] =
     (dep / ConfigKey(conf) / key).get(data) match {
       case Some(x) => x

@@ -136,16 +136,12 @@ object LintUnused {
     val used: Set[ScopedKey[?]] = cMap.values.flatMap(_.dependencies).toSet
     val unused: Seq[ScopedKey[?]] = cMap.keys.filter(!used.contains(_)).toSeq
     val withDefinedAts: Seq[UnusedKey] = unused map { u =>
-      val definingScope = structure.data.definingScope(u.scope, u.key)
-      val definingScoped = definingScope match {
-        case Some(sc) => ScopedKey(sc, u.key)
-        case _        => u
-      }
-      val definedAt = comp.get(definingScoped) match {
+      val definingKey = structure.data.definingKey(u).getOrElse(u)
+      val definedAt = comp.get(definingKey) match {
         case Some(c) => definedAtString(c.settings.toVector)
         case _       => Vector.empty
       }
-      val data = Project.scopedKeyData(structure, u.scope, u.key)
+      val data = Project.scopedKeyData(structure, u)
       UnusedKey(u, definedAt, data)
     }
 

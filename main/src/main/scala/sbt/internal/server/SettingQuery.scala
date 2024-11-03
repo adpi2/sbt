@@ -19,7 +19,7 @@ import sjsonnew._
 import sjsonnew.support.scalajson.unsafe._
 
 object SettingQuery {
-  import sbt.internal.util.{ AttributeKey, Settings }
+  import sbt.internal.util.AttributeKey
   import sbt.internal.util.complete.{ DefaultParsers, Parser }, DefaultParsers._
   import sbt.Def.{ showBuildRelativeKey2, ScopedKey }
 
@@ -70,7 +70,7 @@ object SettingQuery {
       currentBuild: URI,
       defaultConfigs: Option[ResolvedReference] => Seq[String],
       keyMap: Map[String, AttributeKey[?]],
-      data: Settings[Scope]
+      data: Def.Settings
   ): Parser[ParsedKey] =
     scopedKeyFull(index, currentBuild, defaultConfigs, keyMap) flatMap { choices =>
       Act.select(choices, data)(showBuildRelativeKey2(currentBuild))
@@ -81,7 +81,7 @@ object SettingQuery {
       currentBuild: URI,
       defaultConfigs: Option[ResolvedReference] => Seq[String],
       keyMap: Map[String, AttributeKey[?]],
-      data: Settings[Scope]
+      data: Def.Settings
   ): Parser[ScopedKey[?]] =
     scopedKeySelected(index, currentBuild, defaultConfigs, keyMap, data).map(_.key)
 
@@ -96,7 +96,7 @@ object SettingQuery {
 
   def getSettingValue[A](structure: BuildStructure, key: Def.ScopedKey[A]): Either[String, A] =
     structure.data
-      .get(key.scope, key.key)
+      .get(key)
       .toRight(s"Key ${Def.displayFull(key)} not found")
       .flatMap {
         case _: Task[_] => Left(s"Key ${Def.displayFull(key)} is a task, can only query settings")

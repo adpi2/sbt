@@ -12,7 +12,6 @@ import sbt.internal.{ Load, BuildStructure, Act, Aggregation, SessionSettings }
 import Scope.GlobalScope
 import Def.{ ScopedKey, Setting }
 import sbt.internal.util.complete.Parser
-import sbt.internal.util.AttributeKey
 import sbt.util.Show
 import std.Transform.DummyTaskMap
 import sbt.EvaluateTask.extractedTaskConfig
@@ -34,21 +33,21 @@ final case class Extracted(
    * If the project axis is not explicitly specified, it is resolved to be the current project according to the extracted `session`.
    * Other axes are resolved to be `Zero` if they are not specified.
    */
-  def get[T](key: SettingKey[T]): T = getOrError(inCurrent(key.scope), key.key)
-  def get[T](key: TaskKey[T]): Task[T] = getOrError(inCurrent(key.scope), key.key)
+  def get[T](key: SettingKey[T]): T = getOrError(inCurrent(key.scopedKey))
+  def get[T](key: TaskKey[T]): Task[T] = getOrError(inCurrent(key.scopedKey))
 
   /**
    * Gets the value assigned to `key` in the computed settings map wrapped in Some.  If it does not exist, None is returned.
    * If the project axis is not explicitly specified, it is resolved to be the current project according to the extracted `session`.
    * Other axes are resolved to be `Zero` if they are not specified.
    */
-  def getOpt[T](key: SettingKey[T]): Option[T] = structure.data.get(inCurrent(key.scope), key.key)
+  def getOpt[T](key: SettingKey[T]): Option[T] = structure.data.get(inCurrent(key.scopedKey))
   def getOpt[T](key: TaskKey[T]): Option[Task[T]] =
-    structure.data.get(inCurrent(key.scope), key.key)
+    structure.data.get(inCurrent(key))
 
-  private def inCurrent(scope: Scope): Scope =
-    if scope.project == This then scope.rescope(currentRef)
-    else scope
+  private def inCurrent[T](key: ScopedKey[T]): ScopedKey[T] =
+    if key.scope.project == This then key.copy(scope = key.scope.rescope(currentRef))
+    else key
 
   /**
    * Runs the task specified by `key` and returns the transformed State and the resulting value of the task.
@@ -63,7 +62,7 @@ final case class Extracted(
     val config = extractedTaskConfig(this, structure, state)
     val value: Option[(State, Result[T])] =
       EvaluateTask(structure, key.scopedKey, state, currentRef, config)
-    val (newS, result) = getOrError(rkey.scope, rkey.key, value)
+    val (newS, result) = getOrError(rkey.scopedKey, value)
     (newS, EvaluateTask.processResult2(result))
   }
 
@@ -116,15 +115,15 @@ final case class Extracted(
   private def resolve[K <: Scoped.ScopingSetting[K] & Scoped](key: K): K =
     Scope.resolveScope(GlobalScope, currentRef.build, rootProject)(key.scope) / key
 
-  private def getOrError[T](scope: Scope, key: AttributeKey[?], value: Option[T])(implicit
+  private def getOrError[T](key: ScopedKey[?], value: Option[T])(implicit
       display: Show[ScopedKey[?]]
   ): T =
-    value getOrElse sys.error(display.show(ScopedKey(scope, key)) + " is undefined.")
+    value.getOrElse(sys.error(display.show(key) + " is undefined."))
 
-  private def getOrError[T](scope: Scope, key: AttributeKey[T])(implicit
+  private def getOrError[T](key: ScopedKey[T])(implicit
       display: Show[ScopedKey[?]]
   ): T =
-    getOrError(scope, key, structure.data.get(scope, key))(display)
+    getOrError(key, structure.data.get(key))(display)
 
   @deprecated(
     "This discards session settings. Migrate to appendWithSession or appendWithoutSession.",

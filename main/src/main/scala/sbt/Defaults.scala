@@ -4201,7 +4201,7 @@ object Classpaths {
         try {
           val extracted = Project.extract(st)
           val sk = (projRef / Zero / Zero / libraryDependencies).scopedKey
-          val empty = extracted.structure.data.set(sk.scope, sk.key, Nil)
+          val empty = extracted.structure.data.set(sk, Nil)
           val settings = extracted.structure.settings filter { (s: Setting[?]) =>
             (s.key.key == libraryDependencies.key) &&
             (s.key.scope.project == Select(projRef))
@@ -4363,7 +4363,7 @@ object Classpaths {
 
   private[sbt] def depMap(
       projects: Seq[ProjectRef],
-      data: Settings[Scope],
+      data: Def.Settings,
       log: Logger
   ): Task[Map[ModuleRevisionId, ModuleDescriptor]] =
     val ivyModules = projects.flatMap { proj =>
@@ -4440,14 +4440,14 @@ object Classpaths {
   def interSort(
       projectRef: ProjectRef,
       conf: Configuration,
-      data: Settings[Scope],
+      data: Def.Settings,
       deps: BuildDependencies
   ): Seq[(ProjectRef, String)] = ClasspathImpl.interSort(projectRef, conf, data, deps)
 
   def interSortConfigurations(
       projectRef: ProjectRef,
       conf: Configuration,
-      data: Settings[Scope],
+      data: Def.Settings,
       deps: BuildDependencies
   ): Seq[(ProjectRef, ConfigRef)] =
     interSort(projectRef, conf, data, deps).map { case (projectRef, configName) =>
@@ -4491,23 +4491,23 @@ object Classpaths {
     sys.error("Configuration '" + conf + "' not defined in '" + in + "'")
   def allConfigs(conf: Configuration): Seq[Configuration] = ClasspathImpl.allConfigs(conf)
 
-  def getConfigurations(p: ResolvedReference, data: Settings[Scope]): Seq[Configuration] =
+  def getConfigurations(p: ResolvedReference, data: Def.Settings): Seq[Configuration] =
     ClasspathImpl.getConfigurations(p, data)
   def confOpt(configurations: Seq[Configuration], conf: String): Option[Configuration] =
     ClasspathImpl.confOpt(configurations, conf)
 
-  def unmanagedLibs(dep: ResolvedReference, conf: String, data: Settings[Scope]): Task[Classpath] =
+  def unmanagedLibs(dep: ResolvedReference, conf: String, data: Def.Settings): Task[Classpath] =
     ClasspathImpl.unmanagedLibs(dep, conf, data)
 
   def getClasspath(
       key: TaskKey[Classpath],
       dep: ResolvedReference,
       conf: String,
-      data: Settings[Scope]
+      data: Def.Settings
   ): Task[Classpath] =
     ClasspathImpl.getClasspath(key, dep, conf, data)
 
-  def defaultConfigurationTask(p: ResolvedReference, data: Settings[Scope]): Configuration =
+  def defaultConfigurationTask(p: ResolvedReference, data: Def.Settings): Configuration =
     flatten(
       (p / defaultConfiguration)
         .get(data)
@@ -4953,7 +4953,7 @@ trait BuildExtra extends BuildCommon with DefExtra {
   def initScoped[T](sk: ScopedKey[?], i: Initialize[T]): Initialize[T] =
     initScope(fillTaskAxis(sk.scope, sk.key), i)
   def initScope[T](s: Scope, i: Initialize[T]): Initialize[T] =
-    i.mapReferenced(Project.mapScope(Scope.replaceThis(s)))
+    Project.inScope(s, i)
 
   /**
    * Disables post-compilation hook for determining tests for tab-completion (such as for 'test-only').

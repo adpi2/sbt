@@ -20,13 +20,12 @@ enum EvaluationState:
   case Calling
   case Evaluated
 
-abstract class EvaluateSettings[ScopeType]:
-  protected val init: Init[ScopeType]
+class EvaluateSettings[I <: Init](
+    val init: I,
+    executor: Executor,
+    compiledSettings: Seq[init.Compiled[?]],
+):
   import init._
-
-  protected def executor: Executor
-  protected def compiledSettings: Seq[Compiled[?]]
-
   import EvaluationState.*
 
   private val complete = new LinkedBlockingQueue[Option[Throwable]]
@@ -68,7 +67,7 @@ abstract class EvaluateSettings[ScopeType]:
   private val running = new AtomicInteger
   private val cancel = new AtomicBoolean(false)
 
-  def run(implicit delegates: ScopeType => Seq[ScopeType]): Settings[ScopeType] = {
+  def run(implicit delegates: ScopeType => Seq[ScopeType]): Settings = {
     assert(running.get() == 0, "Already running")
     startWork()
     roots.foreach(_.registerIfNew())
@@ -83,7 +82,7 @@ abstract class EvaluateSettings[ScopeType]:
   private def getResults(implicit delegates: ScopeType => Seq[ScopeType]) =
     static.toTypedSeq.foldLeft(empty) { case (ss, static.TPair(key, node)) =>
       if key.key.isLocal then ss
-      else ss.set(key.scope, key.key, node.get)
+      else ss.set(key, node.get)
     }
 
   private lazy val getValue: [A] => INode[A] => A = [A] => (fa: INode[A]) => fa.get

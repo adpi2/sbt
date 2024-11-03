@@ -97,7 +97,7 @@ object FakeState {
     val delegates: (Scope) => Seq[Scope] = _ => Nil
     val scopeLocal: Def.ScopeLocal = _ => Nil
 
-    val (cMap, data: Settings[Scope]) =
+    val (cMap, data: Def.Settings) =
       Def.makeWithCompiledMap(settings)(using delegates, scopeLocal, Def.showFullKey)
     val extra: KeyIndex => BuildUtil[?] = (keyIndex) =>
       BuildUtil(base.toURI, Map.empty, keyIndex, data)

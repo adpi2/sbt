@@ -9,6 +9,7 @@
 package sbt
 
 trait Import {
+  type Settings = Def.Settings
   type Setting[T] = Def.Setting[T]
   type ScopedKey[T] = Def.ScopedKey[T]
   type SettingsDefinition = Def.SettingsDefinition
@@ -146,7 +147,7 @@ trait Import {
   // type Dag[A <: Dag[A]] = sbt.internal.util.Dag[A]
   type DelegatingPMap[K[_], V[_]] = sbt.internal.util.DelegatingPMap[K, V]
   val ErrorHandling = sbt.internal.util.ErrorHandling
-  type EvaluateSettings[S] = sbt.internal.util.EvaluateSettings[S]
+  // type EvaluateSettings[I <: Init] = sbt.internal.util.EvaluateSettings[I]
   val EvaluationState = sbt.internal.util.EvaluationState
   val ExitHook = sbt.internal.util.ExitHook
   type ExitHook = sbt.internal.util.ExitHook
@@ -168,7 +169,7 @@ trait Import {
   type IDSet[T] = sbt.internal.util.IDSet[T]
   val IMap = sbt.internal.util.IMap
   type IMap[K[_], V[_]] = sbt.internal.util.IMap[K, V]
-  type Init[S] = sbt.internal.util.Init[S]
+  type Init = sbt.internal.util.Init
   type JLine = sbt.internal.util.JLine
   // val KCons = sbt.internal.util.KCons
   // type KCons[H, +T <: KList[M], +M[_]] = sbt.internal.util.KCons[H, T, M]
@@ -193,7 +194,6 @@ trait Import {
   val Relation = sbt.internal.util.Relation
   type Relation[A, B] = sbt.internal.util.Relation[A, B]
   val ScalaKeywords = sbt.internal.util.ScalaKeywords
-  type Settings[S] = sbt.internal.util.Settings[S]
   type SharedAttributeKey[T] = sbt.internal.util.SharedAttributeKey[T]
   val Signals = sbt.internal.util.Signals
   val SimpleReader = sbt.internal.util.SimpleReader

@@ -191,7 +191,7 @@ object SettingsTest extends Properties("settings") {
     checkKey(chk, Some(expected), eval)
   }
 
-  def checkKey[T](key: ScopedKey[T], expected: Option[T], settings: Settings[Scope]) = {
+  def checkKey[T](key: ScopedKey[T], expected: Option[T], settings: Def.Settings) = {
     val value = settings.get(key.scope, key.key)
     ("Key: " + key) |:
       ("Value: " + value) |:
@@ -199,7 +199,7 @@ object SettingsTest extends Properties("settings") {
       (value == expected)
   }
 
-  def evaluate(settings: Seq[Setting[_]]): Settings[Scope] =
+  def evaluate(settings: Seq[Setting[_]]): Def.Settings =
     try {
       makeWithCompiledMap(settings)(delegates, scopeLocal, showFullKey)._2
     } catch {
