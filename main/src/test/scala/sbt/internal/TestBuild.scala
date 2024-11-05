@@ -59,7 +59,7 @@ abstract class TestBuild {
   sealed case class Structure(
       env: Env,
       current: ProjectRef,
-      data: Settings[Scope],
+      data: Def.Settings,
       keyIndex: KeyIndex,
       keyMap: Map[String, AttributeKey[?]]
   ) {

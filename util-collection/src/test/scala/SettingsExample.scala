@@ -19,19 +19,24 @@ final case class Scope(nestIndex: Int, idAtIndex: Int = 0)
 //  Lots of type constructors would become binary, which as you may know requires lots of type lambdas
 //  when you want a type function with only one parameter.
 //  That would be a general pain.)
-case class SettingsExample() extends Init[Scope] {
+case class SettingsExample() extends Init {
+  type ScopeType = Scope
   // Provides a way of showing a Scope+AttributeKey[_]
   val showFullKey: Show[ScopedKey[?]] = Show[ScopedKey[?]]((key: ScopedKey[?]) => {
     s"${key.scope.nestIndex}(${key.scope.idAtIndex})/${key.key.label}"
   })
 
   // A sample delegation function that delegates to a Scope with a lower index.
-  val delegates: Scope => Seq[Scope] = { case s @ Scope(index, proj) =>
-    s +: (if (index <= 0) Nil
-          else {
-            (if (proj > 0) List(Scope(index)) else Nil) ++: delegates(Scope(index - 1))
-          })
-  }
+  val delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]] = [a] =>
+    (s: ScopedKey[a]) =>
+      val index = s.scope.nestIndex
+      val proj = s.scope.idAtIndex
+      s +: (
+        if index <= 0 then Nil
+        else
+          (if proj > 0 then List(s.copy(scope = Scope(index))) else Nil) ++:
+            delegates(s.copy(scope = Scope(index - 1)))
+    )
 
   // Not using this feature in this example.
   val scopeLocal: ScopeLocal = _ => Nil
@@ -64,7 +69,7 @@ case class SettingsUsage(val settingsExample: SettingsExample) {
   // "compiles" and applies the settings.
   //  This can be split into multiple steps to access intermediate results if desired.
   //  The 'inspect' command operates on the output of 'compile', for example.
-  val applied: Settings[Scope] =
+  val applied: Settings =
     makeWithCompiledMap(mySettings)(using delegates, scopeLocal, showFullKey)._2
 
   // Show results.

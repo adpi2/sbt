@@ -334,7 +334,7 @@ object Project:
     ScopedKey(Scope.fillTaskAxis(scoped.scope, scoped.key), scoped.key)
 
   def mapScope(f: Scope => Scope): [a] => ScopedKey[a] => ScopedKey[a] =
-    [a] => (k: ScopedKey[a]) => ScopedKey(f(k.scope), k.key)
+    [a] => (k: ScopedKey[a]) => k.copy(scope = f(k.scope))
 
   def transform(g: Scope => Scope, ss: Seq[Def.Setting[?]]): Seq[Def.Setting[?]] =
     // We use caching to avoid creating new Scope instances too many times
@@ -361,7 +361,10 @@ object Project:
     Project.transform(Scope.replaceThis(scope), ss)
 
   private[sbt] def inScope[A](scope: Scope, i: Initialize[A]): Initialize[A] =
-    i.mapReferenced(Project.mapScope(Scope.replaceThis(scope)))
+    i.mapReferenced(replaceThis(scope))
+
+  private[sbt] def replaceThis(scope: Scope): Def.MapScoped =
+    mapScope(Scope.replaceThis(scope))
 
   /**
    * Normalize a String so that it is suitable for use as a dependency management module identifier.

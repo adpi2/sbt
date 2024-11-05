@@ -114,11 +114,10 @@ private[sbt] object Clean {
           // This is the special portion of the task where we clear out the relevant streams
           // and file outputs of a task.
           val streamsKey = scope.task.toOption.map(k => ScopedKey(scope.copy(task = Zero), k))
-          val stampsKey =
-            extracted.structure.data.getDirect(scope, inputFileStamps.key) match {
-              case Some(_) => ScopedKey(scope, inputFileStamps.key) :: Nil
-              case _       => Nil
-            }
+          val stampKey = ScopedKey(scope, inputFileStamps.key)
+          val stampsKey = extracted.structure.data.getDirect(stampKey) match
+            case Some(_) => stampKey :: Nil
+            case _       => Nil
           val streamsGlobs =
             (streamsKey.toSeq ++ stampsKey)
               .map(k => manager(k).cacheDirectory.toPath.toGlob / **)

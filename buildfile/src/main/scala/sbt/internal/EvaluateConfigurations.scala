@@ -9,19 +9,12 @@
 package sbt
 package internal
 
-import sbt.internal.util.{
-  AttributeEntry,
-  AttributeKey,
-  LineRange,
-  MessageOnlyException,
-  RangePosition,
-  Settings
-}
+import sbt.internal.util.{ AttributeKey, LineRange, MessageOnlyException, RangePosition }
 
 import java.io.File
 import java.nio.file.Path
 import sbt.internal.util.complete.DefaultParsers.validID
-import Def.{ ScopedKey, Setting }
+import Def.{ ScopedKey, Setting, Settings }
 import Scope.GlobalScope
 import sbt.SlashSyntax0.given
 import sbt.internal.parser.SbtParser
@@ -351,15 +344,11 @@ object BuildUtilLite:
 end BuildUtilLite
 
 object Index {
-  def taskToKeyMap(data: Settings[Scope]): Map[Task[?], ScopedKey[Task[?]]] = {
+  def taskToKeyMap(data: Settings): Map[Task[?], ScopedKey[Task[?]]] = {
 
-    val pairs = data.scopes flatMap (scope =>
-      data.data(scope).entries collect { case AttributeEntry(key, value: Task[_]) =>
-        (value, ScopedKey(scope, key.asInstanceOf[AttributeKey[Task[?]]]))
-      }
-    )
-
-    pairs.toMap[Task[?], ScopedKey[Task[?]]]
+    data.entries.collect { case (key, value: Task[?]) =>
+      (value, key.asInstanceOf[ScopedKey[Task[?]]])
+    }.toMap
   }
 
   def allKeys(settings: Seq[Setting[?]]): Set[ScopedKey[?]] = {
@@ -371,9 +360,6 @@ object Index {
     }
     result.asScala.toSet
   }
-
-  def attributeKeys(settings: Settings[Scope]): Set[AttributeKey[?]] =
-    settings.data.values.flatMap(_.keys).toSet[AttributeKey[?]]
 
   def stringToKeyMap(settings: Set[AttributeKey[?]]): Map[String, AttributeKey[?]] =
     stringToKeyMap0(settings)(_.label)
@@ -396,19 +382,17 @@ object Index {
 
   private type TriggerMap = collection.mutable.HashMap[TaskId[?], Seq[TaskId[?]]]
 
-  def triggers(ss: Settings[Scope]): Triggers = {
+  def triggers(ss: Settings): Triggers = {
     val runBefore = new TriggerMap
     val triggeredBy = new TriggerMap
-    for
-      a <- ss.data.values
-      case AttributeEntry(_, base: Task[?]) <- a.entries
-    do
+    ss.values.collect { case base: Task[?] =>
       def update(map: TriggerMap, key: AttributeKey[Seq[Task[?]]]): Unit =
         base.info.attributes.get(key).getOrElse(Seq.empty).foreach { task =>
           map(task) = base +: map.getOrElse(task, Nil)
         }
       update(runBefore, Def.runBefore)
       update(triggeredBy, Def.triggeredBy)
+    }
     val onComplete = (GlobalScope / Def.onComplete).get(ss).getOrElse(() => ())
     new Triggers(runBefore, triggeredBy, map => { onComplete(); map })
   }

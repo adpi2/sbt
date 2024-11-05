@@ -47,7 +47,7 @@ import sbt.internal.{
   SettingGraph,
   SessionSettings
 }
-import sbt.internal.util.{ AttributeKey, AttributeMap, Relation, Settings }
+import sbt.internal.util.{ AttributeKey, AttributeMap, Relation }
 import sbt.internal.util.Types.const
 import sbt.internal.server.ServerHandler
 import sbt.librarymanagement.Configuration
@@ -288,10 +288,10 @@ trait ProjectExtra extends Scoped.Syntax:
     def orIdentity[A](opt: Option[A => A]): A => A =
       opt.getOrElse(identity)
 
-    def getHook[A](key: SettingKey[A => A], data: Settings[Scope]): A => A =
+    def getHook[A](key: SettingKey[A => A], data: Def.Settings): A => A =
       orIdentity((Global / key).get(data))
 
-    def getHooks(data: Settings[Scope]): (State => State, State => State) =
+    def getHooks(data: Def.Settings): (State => State, State => State) =
       (getHook(Keys.onLoad, data), getHook(Keys.onUnload, data))
 
     def current(state: State): ProjectRef = session(state).current
@@ -364,55 +364,36 @@ trait ProjectExtra extends Scoped.Syntax:
     private[sbt] def equalKeys(a: ScopedKey[?], b: ScopedKey[?], mask: ScopeMask): Boolean =
       a.key == b.key && Scope.equal(a.scope, b.scope, mask)
 
-    def delegates(
-        structure: BuildStructure,
-        scope: Scope,
-        key: AttributeKey[?]
-    ): Seq[ScopedKey[?]] =
-      structure.delegates(scope).map(d => ScopedKey(d, key))
-
     private[sbt] def scopedKeyData(
         structure: BuildStructure,
-        scope: Scope,
-        key: AttributeKey[?]
+        key: ScopedKey[?]
     ): Option[ScopedKeyData[?]] =
-      structure.data.get(scope, key) map { v =>
-        ScopedKeyData(ScopedKey(scope, key), v)
-      }
+      structure.data.get(key).map(ScopedKeyData(key, _))
 
-    def details(structure: BuildStructure, actual: Boolean, scope: Scope, key: AttributeKey[?])(
-        using display: Show[ScopedKey[?]]
+    def details(structure: BuildStructure, actual: Boolean, key: ScopedKey[?])(using
+        display: Show[ScopedKey[?]]
     ): String = {
-      val scoped = ScopedKey(scope, key)
+      val data = scopedKeyData(structure, key).map(_.description).getOrElse("No entry for key.")
+      val description = key.key.description match
+        case Some(desc) => s"Description:\n\t$desc\n"
+        case None       => ""
 
-      val data = scopedKeyData(structure, scope, key) map { _.description } getOrElse {
-        "No entry for key."
-      }
-      val description = key.description match {
-        case Some(desc) => "Description:\n\t" + desc + "\n"; case None => ""
-      }
-
-      val definingScope = structure.data.definingScope(scope, key)
-      val providedBy = definingScope match {
-        case Some(sc) => "Provided by:\n\t" + Scope.display(sc, key.label) + "\n"
-        case None     => ""
-      }
-      val definingScoped = definingScope match {
-        case Some(sc) => ScopedKey(sc, key)
-        case None     => scoped
-      }
+      val (definingKey, providedBy) = structure.data.definingKey(key) match
+        case Some(k) => k -> s"Provided by:\n\t${Scope.display(k.scope, key.key.label)}\n"
+        case None    => key -> ""
       val comp =
         Def.compiled(structure.settings, actual)(using
           structure.delegates,
           structure.scopeLocal,
           display
         )
-      val definedAt = comp get definingScoped map { c =>
-        Def.definedAtString(c.settings).capitalize
-      } getOrElse ""
+      val definedAt = comp
+        .get(definingKey)
+        .map(c => Def.definedAtString(c.settings).capitalize)
+        .getOrElse("")
 
       val cMap = Def.flattenLocals(comp)
-      val related = cMap.keys.filter(k => k.key == key && k.scope != scope)
+      val related = cMap.keys.filter(k => k.key == key.key && k.scope != key.scope)
       def derivedDependencies(c: ScopedKey[?]): List[ScopedKey[?]] =
         comp
           .get(c)
@@ -420,14 +401,14 @@ trait ProjectExtra extends Scoped.Syntax:
           .toList
           .flatten
 
-      val depends = cMap.get(scoped) match {
-        case Some(c) => c.dependencies.toSet; case None => Set.empty
-      }
-      val derivedDepends: Set[ScopedKey[?]] = derivedDependencies(definingScoped).toSet
+      val depends = cMap.get(key) match
+        case Some(c) => c.dependencies.toSet
+        case None    => Set.empty
+      val derivedDepends: Set[ScopedKey[?]] = derivedDependencies(definingKey).toSet
 
-      val reverse = Project.reverseDependencies(cMap, scoped)
+      val reverse = Project.reverseDependencies(cMap, key)
       val derivedReverse =
-        reverse.filter(r => derivedDependencies(r).contains(definingScoped)).toSet
+        reverse.filter(r => derivedDependencies(r).contains(definingKey)).toSet
 
       def printDepScopes(
           baseLabel: String,
@@ -460,7 +441,7 @@ trait ProjectExtra extends Scoped.Syntax:
         definedAt +
         printDepScopes("Dependencies", "derived from", depends, derivedDepends) +
         printDepScopes("Reverse dependencies", "derives", reverse, derivedReverse) +
-        printScopes("Delegates", delegates(structure, scope, key)) +
+        printScopes("Delegates", structure.delegates(key)) +
         printScopes("Related", related, 10)
     }
 
@@ -497,7 +478,7 @@ trait ProjectExtra extends Scoped.Syntax:
       )
 
     private[sbt] def relation(settings: Seq[Def.Setting[?]], actual: Boolean)(using
-        delegates: Scope => Seq[Scope],
+        delegates: [a] => ScopedKey[a] => Seq[ScopedKey[a]],
         scopeLocal: Def.ScopeLocal,
         display: Show[ScopedKey[?]]
     ): Relation[ScopedKey[?], ScopedKey[?]] =

@@ -22,7 +22,7 @@ import java.io.PrintWriter
 
 sealed abstract class LogManager {
   def apply(
-      data: Settings[Scope],
+      data: Def.Settings,
       state: State,
       task: ScopedKey[?],
       writer: PrintWriter,
@@ -30,20 +30,20 @@ sealed abstract class LogManager {
   ): ManagedLogger
   @deprecated("Use alternate apply that provides a LoggerContext", "1.4.0")
   def apply(
-      data: Settings[Scope],
+      data: Def.Settings,
       state: State,
       task: ScopedKey[?],
       writer: PrintWriter
   ): ManagedLogger = apply(data, state, task, writer, LoggerContext.globalContext)
 
   def backgroundLog(
-      data: Settings[Scope],
+      data: Def.Settings,
       state: State,
       task: ScopedKey[?],
       context: LoggerContext
   ): ManagedLogger
   @deprecated("Use alternate background log that provides a LoggerContext", "1.4.0")
-  final def backgroundLog(data: Settings[Scope], state: State, task: ScopedKey[?]): ManagedLogger =
+  final def backgroundLog(data: Def.Settings, state: State, task: ScopedKey[?]): ManagedLogger =
     backgroundLog(data, state, task, LoggerContext.globalContext)
 }
 
@@ -62,7 +62,7 @@ object LogManager {
   // This is called by mkStreams
   //
   def construct(
-      data: Settings[Scope],
+      data: Def.Settings,
       state: State
   ): (ScopedKey[?], PrintWriter) => ManagedLogger =
     (task: ScopedKey[?], to: PrintWriter) => {
@@ -74,7 +74,7 @@ object LogManager {
 
   @deprecated("Use alternate constructBackgroundLog that provides a LoggerContext", "1.8.0")
   def constructBackgroundLog(
-      data: Settings[Scope],
+      data: Def.Settings,
       state: State
   ): ScopedKey[?] => ManagedLogger = {
     val context = state.get(Keys.loggerContext).getOrElse(LoggerContext.globalContext)
@@ -82,7 +82,7 @@ object LogManager {
   }
 
   def constructBackgroundLog(
-      data: Settings[Scope],
+      data: Def.Settings,
       state: State,
       context: LoggerContext
   ): (ScopedKey[?]) => ManagedLogger =
@@ -119,7 +119,7 @@ object LogManager {
       extra: AppenderSupplier
   ) extends LogManager {
     def apply(
-        data: Settings[Scope],
+        data: Def.Settings,
         state: State,
         task: ScopedKey[?],
         to: PrintWriter,
@@ -137,7 +137,7 @@ object LogManager {
       )
 
     def backgroundLog(
-        data: Settings[Scope],
+        data: Def.Settings,
         state: State,
         task: ScopedKey[?],
         context: LoggerContext
@@ -150,16 +150,16 @@ object LogManager {
   // to change from global being the default to overriding, switch the order of state.get and data.get
   def getOr[T](
       key: AttributeKey[T],
-      data: Settings[Scope],
+      data: Def.Settings,
       scope: Scope,
       state: State,
       default: T
   ): T =
-    data.get(scope, key) orElse state.get(key) getOrElse default
+    data.get(ScopedKey(scope, key)).orElse(state.get(key)).getOrElse(default)
 
   @deprecated("Use defaultLogger that provides a LoggerContext", "1.4.0")
   def defaultLogger(
-      data: Settings[Scope],
+      data: Def.Settings,
       state: State,
       task: ScopedKey[?],
       console: Appender,
@@ -170,7 +170,7 @@ object LogManager {
     defaultLogger(data, state, task, console, backed, relay, extra, LoggerContext.globalContext)
   // This is the main function that is used to generate the logger for tasks.
   def defaultLogger(
-      data: Settings[Scope],
+      data: Def.Settings,
       state: State,
       task: ScopedKey[?],
       console: Appender,
@@ -242,7 +242,7 @@ object LogManager {
   }
 
   def backgroundLog(
-      data: Settings[Scope],
+      data: Def.Settings,
       state: State,
       task: ScopedKey[?],
       console: Appender,
@@ -271,7 +271,7 @@ object LogManager {
 
   // TODO: Fix this
   // if global logging levels are not explicitly set, set them from project settings
-  // private[sbt] def setGlobalLogLevels(s: State, data: Settings[Scope]): State =
+  // private[sbt] def setGlobalLogLevels(s: State, data: Def.Settings): State =
   //   if (hasExplicitGlobalLogLevels(s))
   //     s
   //   else {

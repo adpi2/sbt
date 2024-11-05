@@ -47,7 +47,7 @@ end ParserInstance
 
 /** Composes the Task and Initialize Instances to provide an Instance for [A1] Initialize[Task[A1]]. */
 object FullInstance:
-  type SS = sbt.internal.util.Settings[Scope]
+  type SS = Def.Settings
   val settingsData = TaskKey[SS](
     "settings-data",
     "Provides access to the project data for the build.",

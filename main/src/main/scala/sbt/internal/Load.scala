@@ -21,7 +21,7 @@ import sbt.internal.inc.classpath.ClasspathUtil
 import sbt.internal.inc.{ MappedFileConverter, ScalaInstance, ZincLmUtil, ZincUtil }
 import sbt.internal.util.Attributed.data
 import sbt.internal.util.Types.const
-import sbt.internal.util.{ Attributed, Settings }
+import sbt.internal.util.Attributed
 import sbt.internal.server.BuildServerEvalReporter
 import sbt.io.{ GlobFilter, IO }
 import sbt.librarymanagement.ivy.{ InlineIvyConfiguration, IvyDependencyResolution, IvyPaths }
@@ -276,7 +276,8 @@ private[sbt] object Load {
     val delegates = timed("Load.apply: config.delegates", log) {
       // We use caching to avoid creating new Scope instances too many times
       // Creating a new Scope is CPU expensive because of the uniqueness cache
-      Util.withCaching(config.delegates(loaded))
+      val f: Scope => Seq[Scope] = Util.withCaching(config.delegates(loaded))
+      ([a] => (k: ScopedKey[a]) => f(k.scope).map(s => k.copy(scope = s)))
     }
     val (cMap, data) = timed("Load.apply: Def.make(settings)...", log) {
       // When settings.size is 100000, Def.make takes around 10s.
@@ -310,7 +311,7 @@ private[sbt] object Load {
     (rootEval, bs)
   }
 
-  private def checkTargets(data: Settings[Scope]): Option[String] =
+  private def checkTargets(data: Def.Settings): Option[String] =
     val dups = overlappingTargets(allTargets(data))
     if (dups.isEmpty) None
     else {
@@ -323,7 +324,7 @@ private[sbt] object Load {
   private def overlappingTargets(targets: Seq[(ProjectRef, File)]): Map[File, Seq[ProjectRef]] =
     targets.groupBy(_._2).view.filter(_._2.size > 1).mapValues(_.map(_._1)).toMap
 
-  private def allTargets(data: Settings[Scope]): Seq[(ProjectRef, File)] = {
+  private def allTargets(data: Def.Settings): Seq[(ProjectRef, File)] = {
     import ScopeFilter._
     val allProjects = ScopeFilter(Make.inAnyProject)
     val targetAndRef = Def.setting { (Keys.thisProjectRef.value, Keys.target.value) }
@@ -343,7 +344,8 @@ private[sbt] object Load {
       [a] =>
         (key: ScopedKey[a]) =>
           if key.key == streams.key then
-            ScopedKey(Scope.fillTaskAxis(Scope.replaceThis(to.scope)(key.scope), to.key), key.key)
+            Project
+              .mapScope(Scope.replaceThis(to.scope).andThen(Scope.fillTaskAxis(to.key)))(key)
           else key
     def setDefining[T] =
       (key: ScopedKey[T], value: T) =>
@@ -369,19 +371,19 @@ private[sbt] object Load {
     if (isDummy(tk)) tk else Task(tk.info.set(Keys.taskDefinitionKey, key), tk.work)
 
   def structureIndex(
-      data: Settings[Scope],
+      data: Def.Settings,
       settings: Seq[Setting[?]],
       extra: KeyIndex => BuildUtil[?],
       projects: Map[URI, LoadedBuildUnit]
   ): StructureIndex = {
     val keys = Index.allKeys(settings)
-    val attributeKeys = Index.attributeKeys(data) ++ keys.map(_.key)
-    val scopedKeys = keys ++ data.allKeys((s, k) => ScopedKey(s, k)).toVector
+    val attributeKeys = data.attributeKeys ++ keys.map(_.key)
+    val scopedKeys = (keys ++ data.keys).toVector
     val projectsMap = projects.view.mapValues(_.defined.keySet).toMap
     val configsMap: Map[String, Seq[Configuration]] =
       projects.values.flatMap(bu => bu.defined map { case (k, v) => (k, v.configurations) }).toMap
-    val keyIndex = KeyIndex(scopedKeys.toVector, projectsMap, configsMap)
-    val aggIndex = KeyIndex.aggregate(scopedKeys.toVector, extra(keyIndex), projectsMap, configsMap)
+    val keyIndex = KeyIndex(scopedKeys, projectsMap, configsMap)
+    val aggIndex = KeyIndex.aggregate(scopedKeys, extra(keyIndex), projectsMap, configsMap)
     new StructureIndex(
       Index.stringToKeyMap(attributeKeys),
       Index.taskToKeyMap(data),

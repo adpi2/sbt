@@ -9,13 +9,13 @@
 package sbt
 package internal
 
-import sbt.internal.util.{ Relation, Settings, Dag }
+import sbt.internal.util.{ Relation, Dag }
 
 import java.net.URI
 
 final class BuildUtil[Proj](
     val keyIndex: KeyIndex,
-    val data: Settings[Scope],
+    val data: Def.Settings,
     val root: URI,
     val rootProjectID: URI => String,
     val project: (URI, String) => Proj,
@@ -57,7 +57,7 @@ object BuildUtil {
       root: URI,
       units: Map[URI, LoadedBuildUnit],
       keyIndex: KeyIndex,
-      data: Settings[Scope]
+      data: Def.Settings
   ): BuildUtil[ResolvedProject] = {
     val getp = (build: URI, project: String) => Load.getProject(units, build, project)
     val configs = (_: ResolvedProject).configurations.map(c => ConfigKey(c.name))
